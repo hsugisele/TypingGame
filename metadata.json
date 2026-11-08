@@ -1,0 +1,6 @@
+{
+  "name": "3D 打地鼠打字練習 (3D Mole Typing)",
+  "description": "單一 HTML 即可運行的 3D 打地鼠打字練習遊戲，支援中英文練習、連擊計分、自訂難度與 3D 視覺效果。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

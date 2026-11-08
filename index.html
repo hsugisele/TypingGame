@@ -1,0 +1,3891 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>3D 打地鼠打字練習 (3D Mole Typing)</title>
+  <meta name="description" content="單一 HTML 即可運行的 3D 打地鼠打字練習遊戲，支援中英文練習、連擊計分、自訂難度與 3D 視覺效果。" />
+  <meta property="og:title" content="3D 打地鼠打字練習 (3D Mole Typing)" />
+  <meta property="og:description" content="單一 HTML 即可運行的 3D 打地鼠打字練習遊戲，支援中英文練習、連擊計分、自訂難度與 3D 視覺效果。" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              100: '#dcfce7',
+              500: '#22c55e',
+              600: '#16a34a',
+              700: '#15803d',
+            },
+            soil: {
+              800: '#3f2512',
+              900: '#29180b',
+            }
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Noto Sans TC"', '"PingFang TC"', '"Microsoft JhengHei"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'Consolas', 'Monaco', 'monospace'],
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #e0f2fe;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+      color: #1e293b;
+    }
+    #canvas-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      outline: none;
+    }
+    /* UI Overlay Layer */
+    #ui-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .interactive {
+      pointer-events: auto;
+    }
+    /* Red screen vignette for damage */
+    #damage-flash {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 8;
+      background: radial-gradient(circle, rgba(239,68,68,0) 60%, rgba(239,68,68,0.55) 100%);
+      opacity: 0;
+      transition: opacity 0.25s ease-out;
+    }
+    /* Modal Visibility Enforcement */
+    .hidden {
+      display: none !important;
+    }
+    /* Cute Bright Modal Backdrop */
+    .modal-backdrop {
+      background: rgba(224, 242, 254, 0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    /* Custom Scrollbar for cute bright theme */
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: rgba(241, 245, 249, 0.8);
+      border-radius: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.6);
+      border-radius: 4px;
+    }
+    /* Glow animations */
+    @keyframes subtleGlow {
+      0%, 100% { box-shadow: 0 0 15px rgba(34, 197, 94, 0.3); }
+      50% { box-shadow: 0 0 25px rgba(34, 197, 94, 0.6); }
+    }
+    .glow-active {
+      animation: subtleGlow 2s infinite ease-in-out;
+    }
+    /* Input box cursor blink */
+    @keyframes cursorBlink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    .typing-cursor {
+      display: inline-block;
+      width: 2.5px;
+      height: 1.25em;
+      vertical-align: middle;
+      background-color: #10b981;
+      animation: cursorBlink 1s infinite;
+    }
+    /* Virtual Touch Typing Keyboard styles */
+    .vk-key {
+      transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+      background-color: #ffffff;
+      border: 2px solid #e2e8f0;
+      color: #334155;
+      box-shadow: 0 2px 0 #cbd5e1;
+    }
+    .vk-key-pressed {
+      transform: translateY(2px) scale(0.95) !important;
+      background-color: #f1f5f9 !important;
+      color: #0f172a !important;
+      box-shadow: 0 0 0 transparent !important;
+    }
+    .vk-key-target {
+      transform: scale(1.12);
+      z-index: 5;
+      animation: keyTargetPulse 1.2s infinite ease-in-out;
+    }
+    @keyframes keyTargetPulse {
+      0%, 100% {
+        box-shadow: 0 0 0 2px currentColor, 0 0 12px currentColor;
+      }
+      50% {
+        box-shadow: 0 0 0 3px currentColor, 0 0 20px currentColor;
+      }
+    }
+    /* Option button active/inactive classes for cute bright Minecraft styling */
+    .active-opt {
+      background-color: #ecfdf5 !important;
+      border: 2px solid #10b981 !important;
+      color: #047857 !important;
+      box-shadow: 0 3px 0 #059669 !important;
+      font-weight: 800 !important;
+      transform: translateY(-1px);
+    }
+    .inactive-opt {
+      background-color: #ffffff !important;
+      border: 2px solid #e2e8f0 !important;
+      color: #475569 !important;
+      box-shadow: 0 2px 0 #cbd5e1 !important;
+    }
+    .inactive-opt:hover {
+      background-color: #f0fdf4 !important;
+      border-color: #86efac !important;
+      color: #166534 !important;
+    }
+  </style>
+</head>
+<body class="relative w-full h-full select-none overflow-hidden">
+  <!-- 3D Canvas Mount -->
+  <div id="canvas-container"></div>
+
+  <!-- Damage flash overlay -->
+  <div id="damage-flash"></div>
+
+  <!-- Hidden Real Input for Keyboard & Mobile / IME support -->
+  <input 
+    type="text" 
+    id="ime-input" 
+    autocomplete="off" 
+    autocorrect="off" 
+    autocapitalize="off" 
+    spellcheck="false" 
+    style="position: absolute; opacity: 0; pointer-events: none; left: -9999px; top: -9999px;"
+  />
+
+  <!-- MAIN HUD (In-game) -->
+  <div id="ui-layer">
+    <!-- Top Perimeter Status Cluster -->
+    <header class="w-full p-4 md:px-8 flex items-center justify-between pointer-events-none">
+      <!-- Left: HP & Lives -->
+      <div class="interactive flex items-center gap-3 bg-white/95 border-2 border-emerald-200/90 rounded-2xl px-4 py-2 shadow-md backdrop-blur-md">
+        <span class="text-xs font-black text-emerald-700 uppercase tracking-wider">HP</span>
+        <div id="hearts-container" class="flex items-center gap-1.5 text-rose-500 text-xl">
+          <span class="heart">❤️</span>
+          <span class="heart">❤️</span>
+          <span class="heart">❤️</span>
+          <span class="heart">❤️</span>
+          <span class="heart">❤️</span>
+        </div>
+      </div>
+
+      <!-- Center: Timer & Mode Pill -->
+      <div class="interactive flex flex-col items-center">
+        <div class="flex items-center gap-2 bg-white/95 border-2 border-emerald-300 rounded-full px-5 py-2 shadow-md">
+          <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span id="game-timer" class="font-mono text-xl font-black tracking-wider text-slate-800">01:00</span>
+          <span id="hud-mode-badge" class="ml-2 text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-sm">
+            英文單字 · 簡單
+          </span>
+        </div>
+      </div>
+
+      <!-- Right: Score, Combo & Controls -->
+      <div class="interactive flex items-center gap-2.5">
+        <!-- Combo Indicator -->
+        <div id="combo-pill" class="hidden items-center gap-1.5 bg-gradient-to-r from-amber-100 to-orange-100 border-2 border-amber-300 rounded-2xl px-3.5 py-1.5 shadow-md">
+          <span class="text-base animate-bounce">🔥</span>
+          <span class="text-xs font-black text-amber-800 uppercase">Combo</span>
+          <span id="hud-combo" class="font-mono text-lg font-black text-amber-600">0</span>
+        </div>
+
+        <!-- Score Cluster -->
+        <div class="flex items-center gap-2 bg-white/95 border-2 border-emerald-200/90 rounded-2xl px-4 py-2 shadow-md backdrop-blur-md">
+          <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">得分</span>
+          <span id="hud-score" class="font-mono text-2xl font-black text-emerald-600 tracking-tight">0</span>
+        </div>
+
+        <!-- Sound Button -->
+        <button id="btn-sound-toggle" title="切換音效 (M)" class="p-2.5 rounded-2xl bg-white/95 hover:bg-emerald-50 border-2 border-slate-200 hover:border-emerald-300 text-slate-700 transition shadow-sm cursor-pointer">
+          <svg id="icon-sound-on" class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+          </svg>
+          <svg id="icon-sound-off" class="w-5 h-5 hidden text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+          </svg>
+        </button>
+
+        <!-- Pause Button -->
+        <button id="btn-pause-toggle" title="暫停遊戲 (Esc)" class="p-2.5 rounded-2xl bg-white/95 hover:bg-emerald-50 border-2 border-slate-200 hover:border-emerald-300 text-slate-700 transition shadow-sm cursor-pointer">
+          <svg class="w-5 h-5 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Floating Toast / Hit feedback -->
+    <div id="hit-feedback-container" class="pointer-events-none flex justify-center items-center h-20"></div>
+
+    <!-- Bottom Typing Bar & Command Dock -->
+    <footer class="w-full p-4 md:pb-6 flex flex-col items-center pointer-events-none">
+      <div id="bottom-typing-dock" class="interactive w-full max-w-xl bg-white/95 border-2 border-emerald-200/90 rounded-3xl px-6 py-4 shadow-[0_12px_40px_rgba(16,185,129,0.14)] backdrop-blur-xl flex flex-col items-center gap-2 transition-all">
+        <!-- Target Info / Helper text -->
+        <div class="flex items-center justify-between w-full text-xs text-slate-600 font-medium">
+          <div class="flex items-center gap-2">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span id="typing-status-hint">輸入地鼠頭頂字母／單詞進行打擊</span>
+          </div>
+          <span class="text-slate-400 hidden sm:inline">鍵盤輸入 · 點擊聚焦</span>
+        </div>
+
+        <!-- Visual Input Display Card -->
+        <div id="typing-display-box" class="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl px-5 py-3 flex items-center justify-center min-h-[56px] text-center cursor-text">
+          <div id="typing-display-content" class="text-xl md:text-2xl font-bold font-mono tracking-wider text-slate-800 flex items-center justify-center gap-1">
+            <span class="text-slate-400 text-sm font-normal">等待敲鍵鎖定目標...</span>
+            <span class="typing-cursor"></span>
+          </div>
+        </div>
+
+        <!-- Chinese IME Candidate Buffer display (only for Chinese mode) -->
+        <div id="chinese-composition-bar" class="hidden w-full text-center text-sm font-bold text-amber-800 bg-amber-50 border-2 border-amber-300 rounded-xl py-1.5 px-3">
+          組字中: <span id="chinese-composition-text" class="underline"></span> (按 Enter 或選字送出)
+        </div>
+
+        <!-- Interactive Touch Typing Keyboard Visualizer (Active for English Single Letter Mode) -->
+        <div id="virtual-keyboard-dock" class="w-full mt-1 pt-2 border-t border-slate-200 flex flex-col items-center gap-1.5 transition-all">
+          <!-- Active Finger Instruction Pill -->
+          <div class="w-full flex items-center justify-between text-xs px-1 text-slate-600">
+            <div class="flex items-center gap-2">
+              <span id="vk-finger-badge" class="px-2 py-0.5 rounded-md font-bold text-xs bg-emerald-100 text-emerald-800 border border-emerald-300">
+                基準鍵定位 (F / J)
+              </span>
+              <span id="vk-guide-text" class="text-slate-700 font-semibold">食指輕放 F 與 J 凸起定位鍵</span>
+            </div>
+            <button id="btn-toggle-keyboard" type="button" class="text-[11px] text-slate-600 hover:text-slate-900 transition px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 cursor-pointer font-bold">
+              ⌨️ 隱藏指法鍵盤
+            </button>
+          </div>
+
+          <!-- Visual Keyboard Grid -->
+          <div id="vk-keys-container" class="flex flex-col items-center gap-1 w-full max-w-lg select-none py-0.5">
+            <div id="vk-row-1" class="flex items-center gap-1 sm:gap-1.5 justify-center w-full"></div>
+            <div id="vk-row-2" class="flex items-center gap-1 sm:gap-1.5 justify-center w-full"></div>
+            <div id="vk-row-3" class="flex items-center gap-1 sm:gap-1.5 justify-center w-full"></div>
+          </div>
+
+          <!-- Finger Color Legend -->
+          <div id="vk-legend" class="flex items-center justify-center gap-2 sm:gap-3 text-[10px] text-slate-600 font-medium flex-wrap pt-0.5">
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-rose-500"></span>左小指</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-orange-500"></span>左無名</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-400"></span>左中指</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>左食指</span>
+            <span class="text-slate-600 font-bold">|</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-cyan-400"></span>右食指</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-500"></span>右中指</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-indigo-400"></span>右無名</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-purple-400"></span>右小指</span>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- START MENU / SETTINGS MODAL -->
+  <div id="start-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
+    <div class="w-full max-w-lg bg-white/95 border-4 border-emerald-300 rounded-3xl p-6 md:p-8 shadow-[0_20px_50px_rgba(16,185,129,0.18)] text-slate-800 custom-scroll max-h-[92vh] overflow-y-auto">
+      <!-- Title & Branding -->
+      <div class="text-center mb-6">
+        <div id="modal-character-icon" class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-400 to-teal-300 border-2 border-emerald-400 shadow-lg shadow-emerald-500/20 text-3xl mb-3">
+          🐢
+        </div>
+        <h1 class="text-2xl md:text-3xl font-black tracking-tight text-slate-900 flex items-center justify-center gap-2">
+          <span>🧱</span> 打地鼠打字練習
+        </h1>
+        <p id="modal-character-subtext" class="text-emerald-700 text-xs font-bold mt-1">
+          簡單難度 · 清新體素綠洲 · 可愛金甲烏龜登場
+        </p>
+      </div>
+
+      <!-- Settings Form -->
+      <div class="space-y-5 text-sm">
+        <!-- 1. Language Selection -->
+        <div>
+          <label class="block text-slate-800 font-bold mb-2">1. 練習語言 (Language)</label>
+          <div class="grid grid-cols-2 gap-3">
+            <button type="button" class="lang-opt-btn active-opt p-3 rounded-xl border text-center font-bold transition flex items-center justify-center gap-2" data-lang="en">
+              <span>🔤</span> 英文模式 (English)
+            </button>
+            <button type="button" class="lang-opt-btn inactive-opt p-3 rounded-xl border text-center font-bold transition flex items-center justify-center gap-2" data-lang="zh">
+              <span>🇹🇼</span> 中文模式 (Chinese)
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. English Practice Mode (Conditional) -->
+        <div id="section-en-mode">
+          <label class="block text-slate-800 font-bold mb-2">2. 英文練習模式 (English Mode)</label>
+          <div class="grid grid-cols-2 gap-3">
+            <button type="button" class="en-mode-btn active-opt p-3 rounded-xl border text-center font-bold transition flex flex-col items-center gap-1" data-mode="letters">
+              <span>單字模式 (Letters)</span>
+              <span class="text-xs text-slate-500 font-normal">隨機單一字母 A-Z</span>
+            </button>
+            <button type="button" class="en-mode-btn inactive-opt p-3 rounded-xl border text-center font-bold transition flex flex-col items-center gap-1" data-mode="words">
+              <span>單詞模式 (Words)</span>
+              <span class="text-xs text-slate-500 font-normal">常用英文單字庫</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 3. Touch Typing Fingering Practice Mode (Active in Letters Mode) -->
+        <div id="section-finger-mode">
+          <div class="flex items-center justify-between mb-2">
+            <label class="block text-slate-800 font-bold">3. 特定指法練習 (Touch Typing Practice)</label>
+            <span class="text-[11px] text-emerald-800 font-bold bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300">
+              新手必練 · 盲打手感
+            </span>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <button type="button" class="finger-opt-btn active-opt p-2 rounded-xl border text-center transition flex flex-col items-center gap-0.5" data-finger="home">
+              <span class="text-base">🎯</span>
+              <span class="font-bold text-xs">基準鍵 (Home)</span>
+              <span class="text-[10px] text-slate-500 font-mono">ASDF JKL</span>
+            </button>
+            <button type="button" class="finger-opt-btn inactive-opt p-2 rounded-xl border text-center transition flex flex-col items-center gap-0.5" data-finger="index">
+              <span class="text-base">☝️</span>
+              <span class="font-bold text-xs">食指強化</span>
+              <span class="text-[10px] text-slate-500 font-mono">FGRT / JHUY</span>
+            </button>
+            <button type="button" class="finger-opt-btn inactive-opt p-2 rounded-xl border text-center transition flex flex-col items-center gap-0.5" data-finger="middle_ring">
+              <span class="text-base">✌️</span>
+              <span class="font-bold text-xs">中指與無名指</span>
+              <span class="text-[10px] text-slate-500 font-mono">EDC / IK / WSX</span>
+            </button>
+            <button type="button" class="finger-opt-btn inactive-opt p-2 rounded-xl border text-center transition flex flex-col items-center gap-0.5" data-finger="pinky">
+              <span class="text-base">🤙</span>
+              <span class="font-bold text-xs">小指專練</span>
+              <span class="text-[10px] text-slate-500 font-mono">Q A Z / P</span>
+            </button>
+            <button type="button" class="finger-opt-btn inactive-opt p-2 rounded-xl border text-center transition flex flex-col items-center gap-0.5" data-finger="left_hand">
+              <span class="text-base">👈</span>
+              <span class="font-bold text-xs">左手半區</span>
+              <span class="text-[10px] text-slate-500 font-mono">左手 15 鍵</span>
+            </button>
+            <button type="button" class="finger-opt-btn inactive-opt p-2 rounded-xl border text-center transition flex flex-col items-center gap-0.5" data-finger="right_hand">
+              <span class="text-base">👉</span>
+              <span class="font-bold text-xs">右手半區</span>
+              <span class="text-[10px] text-slate-500 font-mono">右手 11 鍵</span>
+            </button>
+            <button type="button" class="finger-opt-btn inactive-opt p-2 rounded-xl border text-center transition flex flex-col items-center gap-0.5" data-finger="top_row">
+              <span class="text-base">⬆️</span>
+              <span class="font-bold text-xs">上排鍵伸展</span>
+              <span class="text-[10px] text-slate-500 font-mono">Q-P 上排 10 鍵</span>
+            </button>
+            <button type="button" class="finger-opt-btn inactive-opt p-2 rounded-xl border text-center transition flex flex-col items-center gap-0.5" data-finger="bottom_row">
+              <span class="text-base">⬇️</span>
+              <span class="font-bold text-xs">下排鍵下屈</span>
+              <span class="text-[10px] text-slate-500 font-mono">Z-M 下排 7 鍵</span>
+            </button>
+            <button type="button" class="finger-opt-btn inactive-opt p-2 rounded-xl border text-center transition flex flex-col items-center gap-0.5" data-finger="all">
+              <span class="text-base">🔤</span>
+              <span class="font-bold text-xs">全鍵位綜合</span>
+              <span class="text-[10px] text-slate-500 font-mono">A-Z 26 鍵隨機</span>
+            </button>
+          </div>
+          <!-- Dynamic Description Box -->
+          <div class="mt-2.5 p-3 rounded-xl bg-emerald-50/80 border-2 border-emerald-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-slate-700">
+            <span id="finger-desc-text" class="text-slate-700">
+              初學者必練！掌握食指 F、J 定位鍵與基準行，建立標準盲打盲按手感
+            </span>
+            <span id="finger-keys-badge" class="font-mono text-emerald-800 font-bold bg-white px-2.5 py-0.5 rounded-lg border border-emerald-300 shadow-sm whitespace-nowrap self-start sm:self-auto">
+              A S D F G H J K L
+            </span>
+          </div>
+
+          <!-- Open Tutorial Guide Button -->
+          <button id="btn-manual-open-tutorial" type="button" class="w-full mt-2.5 py-2.5 px-3 rounded-xl bg-emerald-100 hover:bg-emerald-200 border-2 border-emerald-300 text-emerald-900 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-sm">
+            <span>📖 查看指法教學與手部歸位引導</span>
+            <span class="text-[10px] bg-white text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-300 font-bold">新手推薦</span>
+          </button>
+        </div>
+
+        <!-- 4. Case Setting (Conditional) -->
+        <div id="section-case-mode">
+          <label class="block text-slate-800 font-bold mb-2">4. 英文大小寫設定 (Case Sensitivity)</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button type="button" class="case-opt-btn active-opt p-2.5 rounded-xl border text-center font-medium transition text-xs" data-case="lower">
+              只小寫<br><span class="text-slate-500 font-mono">apple</span>
+            </button>
+            <button type="button" class="case-opt-btn inactive-opt p-2.5 rounded-xl border text-center font-medium transition text-xs" data-case="upper">
+              只大寫<br><span class="text-slate-500 font-mono">APPLE</span>
+            </button>
+            <button type="button" class="case-opt-btn inactive-opt p-2.5 rounded-xl border text-center font-medium transition text-xs" data-case="mixed">
+              大小寫混合<br><span class="text-slate-500 font-mono">ApPlE</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 5. Difficulty & Character Scene Theme -->
+        <div>
+          <label class="block text-slate-800 font-bold mb-2">5. 難度與主題角色 (Difficulty & Theme)</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button type="button" class="diff-opt-btn active-opt p-3 rounded-xl border text-center transition flex flex-col items-center gap-1.5" data-diff="easy">
+              <span class="text-2xl">🐢</span>
+              <span class="font-bold text-emerald-700 text-xs">簡單</span>
+              <span class="text-[10px] text-emerald-600 font-semibold">清新綠 · 5秒 / 1隻</span>
+            </button>
+            <button type="button" class="diff-opt-btn inactive-opt p-3 rounded-xl border text-center transition flex flex-col items-center gap-1.5" data-diff="medium">
+              <span class="text-2xl">🐕</span>
+              <span class="font-bold text-amber-700 text-xs">中等</span>
+              <span class="text-[10px] text-amber-600 font-semibold">溫暖橙 · 3.5秒 / 2隻</span>
+            </button>
+            <button type="button" class="diff-opt-btn inactive-opt p-3 rounded-xl border text-center transition flex flex-col items-center gap-1.5" data-diff="hard">
+              <span class="text-2xl">🐰</span>
+              <span class="font-bold text-pink-700 text-xs">困難 </span>
+              <span class="text-[10px] text-pink-600 font-semibold">夢幻粉 · 2秒 / 3隻</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 6. Game Duration -->
+        <div>
+          <label class="block text-slate-800 font-bold mb-2">6. 遊戲時間 (Game Duration)</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button type="button" class="duration-opt-btn active-opt p-2.5 rounded-xl border text-center font-medium transition text-xs" data-duration="60">
+              ⏱️ 60 秒挑戰
+            </button>
+            <button type="button" class="duration-opt-btn inactive-opt p-2.5 rounded-xl border text-center font-medium transition text-xs" data-duration="90">
+              ⏱️ 90 秒耐力
+            </button>
+            <button type="button" class="duration-opt-btn inactive-opt p-2.5 rounded-xl border text-center font-medium transition text-xs" data-duration="0">
+              ❤️ 生存模式 (無時限)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="mt-8 space-y-3">
+        <button id="btn-start-game" class="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 hover:brightness-105 text-slate-900 font-black text-lg tracking-wide shadow-[0_6px_0_#059669] active:translate-y-1 active:shadow-[0_2px_0_#059669] transition cursor-pointer flex items-center justify-center gap-2">
+          <span>開始遊戲</span>
+          <span class="text-xs bg-black/10 px-2 py-0.5 rounded-md font-mono font-bold">Enter / Space</span>
+        </button>
+        <p class="text-center text-xs text-slate-500 font-medium">
+          3D 打地鼠 · 支援離線執行與微軟/注音/拼音中文輸入法
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOUCH TYPING TUTORIAL & WARMUP MODAL -->
+  <div id="tutorial-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 modal-backdrop">
+    <div class="w-full max-w-2xl bg-white/95 border-4 border-emerald-300 rounded-3xl p-5 md:p-7 shadow-[0_20px_50px_rgba(16,185,129,0.18)] text-slate-800 custom-scroll max-h-[94vh] overflow-y-auto flex flex-col">
+      <!-- Header with Skip button -->
+      <div class="flex items-center justify-between pb-3 border-b-2 border-slate-100">
+        <div class="flex items-center gap-3">
+          <div class="w-11 h-11 rounded-2xl bg-emerald-100 border-2 border-emerald-300 text-emerald-800 flex items-center justify-center text-2xl shadow-sm shrink-0">
+            📖
+          </div>
+          <div>
+            <h2 class="text-xl md:text-2xl font-black text-slate-900 flex items-center gap-2">
+              <span>盲打指法與雙手歸位教學</span>
+              <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">新手必學</span>
+            </h2>
+            <p class="text-xs text-slate-500 mt-0.5 font-medium">手指隨時回歸基準鍵 · 不看鍵盤建立正確肌肉記憶</p>
+          </div>
+        </div>
+        <button id="btn-tutorial-skip-top" type="button" class="text-xs px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 font-bold transition border border-slate-300 flex items-center gap-1 cursor-pointer shrink-0">
+          <span>略過教學</span> <span>✕</span>
+        </button>
+      </div>
+
+      <!-- Tab Buttons -->
+      <div class="flex items-center gap-2 mt-4 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+        <button id="tut-tab-btn-home" type="button" class="tut-tab-btn flex-1 py-2 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 bg-emerald-400 text-slate-900 shadow-sm cursor-pointer border border-emerald-500">
+          <span>📍 雙手基準歸位</span>
+        </button>
+        <button id="tut-tab-btn-zones" type="button" class="tut-tab-btn flex-1 py-2 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900 cursor-pointer">
+          <span>🎨 8 指色彩職責</span>
+        </button>
+        <button id="tut-tab-btn-warmup" type="button" class="tut-tab-btn flex-1 py-2 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900 cursor-pointer">
+          <span>⚡ 實體鍵位熱身</span>
+        </button>
+      </div>
+
+      <!-- TAB 1: 雙手基準歸位 (Home Row Placement) -->
+      <div id="tut-pane-home" class="tut-pane space-y-4 pt-4">
+        <!-- Key Tactile Bump Spotlight -->
+        <div class="bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 border-2 border-emerald-300 rounded-2xl p-4 flex flex-col md:flex-row items-center gap-4 shadow-sm">
+          <div class="flex items-center gap-3 shrink-0">
+            <div class="flex flex-col items-center">
+              <span class="text-[10px] text-emerald-800 font-bold mb-1">左手食指定位</span>
+              <div class="w-14 h-14 rounded-xl bg-white border-3 border-emerald-500 text-emerald-700 font-mono text-2xl font-black flex flex-col items-center justify-center relative shadow-md">
+                F
+                <span class="w-4 h-1 bg-emerald-500 rounded-full mt-0.5"></span>
+              </div>
+            </div>
+            <div class="text-xl text-slate-400 font-bold">+</div>
+            <div class="flex flex-col items-center">
+              <span class="text-[10px] text-cyan-800 font-bold mb-1">右手食指定位</span>
+              <div class="w-14 h-14 rounded-xl bg-white border-3 border-cyan-500 text-cyan-700 font-mono text-2xl font-black flex flex-col items-center justify-center relative shadow-md">
+                J
+                <span class="w-4 h-1 bg-cyan-500 rounded-full mt-0.5"></span>
+              </div>
+            </div>
+          </div>
+          <div class="text-xs text-slate-700 space-y-1">
+            <div class="font-extrabold text-sm text-slate-900 flex items-center gap-1.5">
+              <span>👉 盲打秘密：F 與 J 鍵上的實體微凸小浮條！</span>
+            </div>
+            <p class="leading-relaxed">雙手放上鍵盤時，<strong>無需低頭看鍵盤</strong>，只要左右手食指摸到 F 與 J 的凸起標記，手指就已精準歸位！其餘手指自然向兩側展開落座。</p>
+          </div>
+        </div>
+
+        <!-- Two-hand placement card -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          <!-- Left Hand Placement -->
+          <div class="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-sm text-emerald-700 flex items-center gap-1.5">
+                <span>🤚 左手基準鍵 (A - S - D - F)</span>
+              </span>
+              <span class="text-[10px] bg-white border border-slate-200 text-slate-600 px-2 py-0.5 rounded font-bold">左半邊</span>
+            </div>
+            <div class="grid grid-cols-4 gap-1.5 font-mono text-center">
+              <div class="p-2 rounded-xl bg-rose-50 border-2 border-rose-300 text-rose-800 shadow-sm">
+                <div class="text-lg font-black">A</div>
+                <div class="text-[10px] text-rose-600 font-bold">小指</div>
+              </div>
+              <div class="p-2 rounded-xl bg-orange-50 border-2 border-orange-300 text-orange-800 shadow-sm">
+                <div class="text-lg font-black">S</div>
+                <div class="text-[10px] text-orange-600 font-bold">無名指</div>
+              </div>
+              <div class="p-2 rounded-xl bg-amber-50 border-2 border-amber-300 text-amber-800 shadow-sm">
+                <div class="text-lg font-black">D</div>
+                <div class="text-[10px] text-amber-600 font-bold">中指</div>
+              </div>
+              <div class="p-2 rounded-xl bg-emerald-100 border-2 border-emerald-400 text-emerald-900 shadow-sm">
+                <div class="text-lg font-black">F</div>
+                <div class="text-[10px] text-emerald-700 font-bold">食指(凸)</div>
+              </div>
+            </div>
+            <p class="text-slate-500 text-[11px] font-medium">左手大拇指自然懸空或輕貼空白鍵左側。</p>
+          </div>
+
+          <!-- Right Hand Placement -->
+          <div class="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-sm text-cyan-700 flex items-center gap-1.5">
+                <span>✋ 右手基準鍵 (J - K - L - ;)</span>
+              </span>
+              <span class="text-[10px] bg-white border border-slate-200 text-slate-600 px-2 py-0.5 rounded font-bold">右半邊</span>
+            </div>
+            <div class="grid grid-cols-4 gap-1.5 font-mono text-center">
+              <div class="p-2 rounded-xl bg-cyan-100 border-2 border-cyan-400 text-cyan-900 shadow-sm">
+                <div class="text-lg font-black">J</div>
+                <div class="text-[10px] text-cyan-700 font-bold">食指(凸)</div>
+              </div>
+              <div class="p-2 rounded-xl bg-blue-50 border-2 border-blue-300 text-blue-800 shadow-sm">
+                <div class="text-lg font-black">K</div>
+                <div class="text-[10px] text-blue-600 font-bold">中指</div>
+              </div>
+              <div class="p-2 rounded-xl bg-indigo-50 border-2 border-indigo-300 text-indigo-800 shadow-sm">
+                <div class="text-lg font-black">L</div>
+                <div class="text-[10px] text-indigo-600 font-bold">無名指</div>
+              </div>
+              <div class="p-2 rounded-xl bg-purple-50 border-2 border-purple-300 text-purple-800 shadow-sm">
+                <div class="text-lg font-black">;</div>
+                <div class="text-[10px] text-purple-600 font-bold">小指</div>
+              </div>
+            </div>
+            <p class="text-slate-500 text-[11px] font-medium">右手大拇指自然輕置於空白鍵右側。</p>
+          </div>
+        </div>
+
+        <!-- 3 Golden Rules -->
+        <div class="bg-amber-50/70 border-2 border-amber-200 rounded-2xl p-3.5 space-y-2">
+          <div class="font-bold text-amber-800 text-xs flex items-center gap-1.5">
+            <span>💡 盲打三大黃金準則</span>
+          </div>
+          <ul class="text-xs text-slate-700 space-y-1.5">
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-700 font-bold shrink-0">1.</span>
+              <span><strong>按完任何鍵，手指立刻彈回基準行</strong>：敲完上排或下排鍵後，手指迅速回歸 ASDF 與 JKL;，不可懸在半空漂移。</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-700 font-bold shrink-0">2.</span>
+              <span><strong>嚴禁一指神功</strong>：每根手指只負責自己的專屬按鍵列，嚴禁用食指滿場飛奔尋找按鍵。</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-emerald-700 font-bold shrink-0">3.</span>
+              <span><strong>放慢求準，速度自來</strong>：初學請先追求 100% 正確指位與放鬆手腕，手感建立後速度會突飛猛進！</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- TAB 2: 8 指色彩職責 (Finger Color Zones) -->
+      <div id="tut-pane-zones" class="tut-pane hidden space-y-4 pt-4">
+        <!-- Color Coded Keyboard Map -->
+        <div class="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4">
+          <div class="flex items-center justify-between mb-3 text-xs">
+            <span class="font-bold text-slate-800">全鍵位 8 色職責區域對照</span>
+            <span class="text-slate-500 text-[11px]">同色按鍵由同一隻手指負責</span>
+          </div>
+
+          <!-- Mini Keyboard Rows with colors -->
+          <div class="flex flex-col gap-1.5 max-w-lg mx-auto font-mono text-center text-xs">
+            <!-- Row 1 (Q-P) -->
+            <div class="flex gap-1 justify-center">
+              <span class="w-8 h-8 rounded-lg bg-rose-100 border border-rose-300 text-rose-800 flex items-center justify-center font-bold">Q</span>
+              <span class="w-8 h-8 rounded-lg bg-orange-100 border border-orange-300 text-orange-800 flex items-center justify-center font-bold">W</span>
+              <span class="w-8 h-8 rounded-lg bg-amber-100 border border-amber-300 text-amber-800 flex items-center justify-center font-bold">E</span>
+              <span class="w-8 h-8 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800 flex items-center justify-center font-bold">R</span>
+              <span class="w-8 h-8 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800 flex items-center justify-center font-bold">T</span>
+              <span class="w-8 h-8 rounded-lg bg-cyan-100 border border-cyan-300 text-cyan-800 flex items-center justify-center font-bold">Y</span>
+              <span class="w-8 h-8 rounded-lg bg-cyan-100 border border-cyan-300 text-cyan-800 flex items-center justify-center font-bold">U</span>
+              <span class="w-8 h-8 rounded-lg bg-blue-100 border border-blue-300 text-blue-800 flex items-center justify-center font-bold">I</span>
+              <span class="w-8 h-8 rounded-lg bg-indigo-100 border border-indigo-300 text-indigo-800 flex items-center justify-center font-bold">O</span>
+              <span class="w-8 h-8 rounded-lg bg-purple-100 border border-purple-300 text-purple-800 flex items-center justify-center font-bold">P</span>
+            </div>
+            <!-- Row 2 (A-L) -->
+            <div class="flex gap-1 justify-center">
+              <span class="w-8 h-8 rounded-lg bg-rose-200 border-2 border-rose-400 text-rose-900 flex items-center justify-center font-bold">A</span>
+              <span class="w-8 h-8 rounded-lg bg-orange-200 border-2 border-orange-400 text-orange-900 flex items-center justify-center font-bold">S</span>
+              <span class="w-8 h-8 rounded-lg bg-amber-200 border-2 border-amber-400 text-amber-900 flex items-center justify-center font-bold">D</span>
+              <span class="w-8 h-8 rounded-lg bg-emerald-200 border-2 border-emerald-500 text-emerald-900 flex items-center justify-center font-bold relative">F<span class="w-2.5 h-0.5 bg-emerald-700 absolute bottom-1"></span></span>
+              <span class="w-8 h-8 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800 flex items-center justify-center font-bold">G</span>
+              <span class="w-8 h-8 rounded-lg bg-cyan-100 border border-cyan-300 text-cyan-800 flex items-center justify-center font-bold">H</span>
+              <span class="w-8 h-8 rounded-lg bg-cyan-200 border-2 border-cyan-500 text-cyan-900 flex items-center justify-center font-bold relative">J<span class="w-2.5 h-0.5 bg-cyan-700 absolute bottom-1"></span></span>
+              <span class="w-8 h-8 rounded-lg bg-blue-200 border-2 border-blue-400 text-blue-900 flex items-center justify-center font-bold">K</span>
+              <span class="w-8 h-8 rounded-lg bg-indigo-200 border-2 border-indigo-400 text-indigo-900 flex items-center justify-center font-bold">L</span>
+              <span class="w-8 h-8 rounded-lg bg-purple-200 border-2 border-purple-400 text-purple-900 flex items-center justify-center font-bold">;</span>
+            </div>
+            <!-- Row 3 (Z-M) -->
+            <div class="flex gap-1 justify-center">
+              <span class="w-8 h-8 rounded-lg bg-rose-100 border border-rose-300 text-rose-800 flex items-center justify-center font-bold">Z</span>
+              <span class="w-8 h-8 rounded-lg bg-orange-100 border border-orange-300 text-orange-800 flex items-center justify-center font-bold">X</span>
+              <span class="w-8 h-8 rounded-lg bg-amber-100 border border-amber-300 text-amber-800 flex items-center justify-center font-bold">C</span>
+              <span class="w-8 h-8 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800 flex items-center justify-center font-bold">V</span>
+              <span class="w-8 h-8 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800 flex items-center justify-center font-bold">B</span>
+              <span class="w-8 h-8 rounded-lg bg-cyan-100 border border-cyan-300 text-cyan-800 flex items-center justify-center font-bold">N</span>
+              <span class="w-8 h-8 rounded-lg bg-cyan-100 border border-cyan-300 text-cyan-800 flex items-center justify-center font-bold">M</span>
+              <span class="w-8 h-8 rounded-lg bg-blue-100 border border-blue-300 text-blue-800 flex items-center justify-center font-bold">,</span>
+              <span class="w-8 h-8 rounded-lg bg-indigo-100 border border-indigo-300 text-indigo-800 flex items-center justify-center font-bold">.</span>
+              <span class="w-8 h-8 rounded-lg bg-purple-100 border border-purple-300 text-purple-800 flex items-center justify-center font-bold">/</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 8 Fingers Grid Details -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-rose-300">
+            <div class="flex items-center gap-1.5 text-rose-700 font-bold mb-1">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>左小指
+            </div>
+            <div class="font-mono text-slate-800 font-bold">Q · A · Z</div>
+            <div class="text-[10px] text-slate-500 mt-1">負責最左外側鍵</div>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-orange-300">
+            <div class="flex items-center gap-1.5 text-orange-700 font-bold mb-1">
+              <span class="w-2.5 h-2.5 rounded-full bg-orange-500"></span>左無名
+            </div>
+            <div class="font-mono text-slate-800 font-bold">W · S · X</div>
+            <div class="text-[10px] text-slate-500 mt-1">獨立屈伸練習</div>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-amber-300">
+            <div class="flex items-center gap-1.5 text-amber-700 font-bold mb-1">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>左中指
+            </div>
+            <div class="font-mono text-slate-800 font-bold">E · D · C</div>
+            <div class="text-[10px] text-slate-500 mt-1">高頻英文按鍵</div>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-emerald-300">
+            <div class="flex items-center gap-1.5 text-emerald-700 font-bold mb-1">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>左食指 ⭐
+            </div>
+            <div class="font-mono text-slate-800 font-bold">R T F G V B</div>
+            <div class="text-[10px] text-slate-500 mt-1">主力 6 鍵 (F 定位)</div>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-cyan-300">
+            <div class="flex items-center gap-1.5 text-cyan-700 font-bold mb-1">
+              <span class="w-2.5 h-2.5 rounded-full bg-cyan-500"></span>右食指 ⭐
+            </div>
+            <div class="font-mono text-slate-800 font-bold">Y U H J N M</div>
+            <div class="text-[10px] text-slate-500 mt-1">主力 6 鍵 (J 定位)</div>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-blue-300">
+            <div class="flex items-center gap-1.5 text-blue-700 font-bold mb-1">
+              <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>右中指
+            </div>
+            <div class="font-mono text-slate-800 font-bold">I · K · ,</div>
+            <div class="text-[10px] text-slate-500 mt-1">母音 I 與標點</div>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-indigo-300">
+            <div class="flex items-center gap-1.5 text-indigo-700 font-bold mb-1">
+              <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>右無名
+            </div>
+            <div class="font-mono text-slate-800 font-bold">O · L · .</div>
+            <div class="text-[10px] text-slate-500 mt-1">母音 O 與句號</div>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-purple-300">
+            <div class="flex items-center gap-1.5 text-purple-700 font-bold mb-1">
+              <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span>右小指
+            </div>
+            <div class="font-mono text-slate-800 font-bold">P · ; · /</div>
+            <div class="text-[10px] text-slate-500 mt-1">分號與標點</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: 實體鍵位熱身校準 (Interactive Key Warmup) -->
+      <div id="tut-pane-warmup" class="tut-pane hidden space-y-4 pt-4">
+        <div class="bg-slate-50 border-2 border-slate-200 rounded-2xl p-5 text-center space-y-4">
+          <!-- Step indicator & Progress -->
+          <div class="flex items-center justify-between text-xs text-slate-500">
+            <span class="font-bold text-emerald-700">⚡ 基準鍵實體敲擊校準</span>
+            <span id="tut-warmup-step-text" class="font-mono font-bold text-slate-800">第 1 / 7 步</span>
+          </div>
+
+          <!-- Progress Bar -->
+          <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+            <div id="tut-warmup-progress-bar" class="bg-gradient-to-r from-emerald-500 to-cyan-500 h-full transition-all duration-300" style="width: 14%;"></div>
+          </div>
+
+          <!-- Giant Target Card -->
+          <div class="py-3">
+            <div class="text-xs text-slate-500 mb-2 font-medium">請直接在您的鍵盤上敲擊目標鍵：</div>
+            <div id="tut-target-key-box" class="inline-flex flex-col items-center justify-center w-28 h-28 rounded-3xl bg-white border-4 border-emerald-400 shadow-xl transition-all">
+              <span id="tut-target-key-char" class="font-mono text-5xl font-black text-slate-900">F</span>
+              <span id="tut-target-key-bump" class="w-6 h-1 bg-emerald-500 rounded-full mt-1"></span>
+            </div>
+            <div id="tut-target-finger-label" class="mt-3 text-sm font-bold text-emerald-700">
+              👈 請使用【左手食指】敲擊定位鍵 F
+            </div>
+            <p id="tut-warmup-hint" class="text-xs text-slate-500 mt-1">摸摸 F 鍵上的微凸小浮條，直接敲鍵測試！</p>
+          </div>
+
+          <!-- Live Key Feedback Bubble -->
+          <div id="tut-feedback-bubble" class="h-6 text-xs font-semibold text-slate-600 flex items-center justify-center">
+            等待敲鍵校準...
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer: Options & Action Buttons -->
+      <div class="mt-6 pt-4 border-t-2 border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <!-- Remember skip preference -->
+        <label class="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+          <input type="checkbox" id="chk-skip-tutorial-future" class="rounded border-slate-300 text-emerald-500 focus:ring-emerald-500 bg-white w-4 h-4 cursor-pointer" />
+          <span>下次直接開始遊戲（不自動跳出教學，可隨時從選單查看）</span>
+        </label>
+
+        <!-- Actions -->
+        <div class="flex items-center gap-2.5 w-full sm:w-auto">
+          <button id="btn-tutorial-skip-bottom" type="button" class="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 text-xs font-bold transition border border-slate-300 cursor-pointer">
+            略過教學
+          </button>
+          <button id="btn-tutorial-start" type="button" class="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 hover:brightness-105 text-slate-900 text-xs font-black shadow-[0_4px_0_#059669] active:translate-y-0.5 active:shadow-[0_1px_0_#059669] transition flex items-center justify-center gap-1.5 cursor-pointer">
+            <span>完成歸位，開始挑戰！ 🚀</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAUSE MODAL -->
+  <div id="pause-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 modal-backdrop">
+    <div class="w-full max-w-sm bg-white/95 border-4 border-emerald-300 rounded-3xl p-6 shadow-2xl text-center text-slate-800">
+      <div class="text-4xl mb-3">⏸️</div>
+      <h2 class="text-2xl font-black text-slate-900 mb-2">遊戲已暫停</h2>
+      <p class="text-slate-500 text-sm mb-6">休息一下，隨時準備繼續敲打地鼠！</p>
+      <div class="space-y-3">
+        <button id="btn-resume-game" class="w-full py-3 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-900 font-bold transition shadow-[0_4px_0_#059669] active:translate-y-0.5 active:shadow-[0_1px_0_#059669] cursor-pointer">
+          繼續遊戲 (Esc)
+        </button>
+        <button id="btn-restart-from-pause" class="w-full py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold transition border border-slate-300 cursor-pointer">
+          重新開始
+        </button>
+        <button id="btn-settings-from-pause" class="w-full py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold transition border border-slate-300 cursor-pointer">
+          設定模式
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GAME OVER / SETTLEMENT MODAL -->
+  <div id="gameover-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 modal-backdrop">
+    <div class="w-full max-w-md bg-white/95 border-4 border-emerald-300 rounded-3xl p-6 md:p-8 shadow-2xl text-center custom-scroll max-h-[92vh] overflow-y-auto text-slate-800">
+      <!-- Badge & Grade -->
+      <div class="relative mb-5 inline-block">
+        <div id="settlement-icon" class="text-5xl md:text-6xl mb-2">🏆</div>
+        <div id="settlement-rank" class="inline-block px-4 py-1 rounded-full text-xs font-black tracking-widest uppercase bg-amber-400 text-slate-950 shadow-md">
+          RANK: SSS
+        </div>
+      </div>
+
+      <h2 id="settlement-title" class="text-2xl md:text-3xl font-black text-slate-900 mb-1">
+        挑戰完成！
+      </h2>
+      <p id="settlement-comment" class="text-sm text-emerald-700 font-bold mb-6">
+        神速鍵盤俠！打字又快又準！
+      </p>
+
+      <!-- Stats Grid (4 Key Indicators) -->
+      <div class="grid grid-cols-2 gap-3 mb-6 text-left">
+        <!-- Score -->
+        <div class="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 shadow-sm">
+          <span class="text-xs font-bold text-slate-500 block mb-1">總得分 (Score)</span>
+          <span id="settle-score" class="font-mono text-2xl font-black text-emerald-600">0</span>
+        </div>
+
+        <!-- Max Combo -->
+        <div class="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 shadow-sm">
+          <span class="text-xs font-bold text-slate-500 block mb-1">最高連擊 (Max Combo)</span>
+          <span id="settle-combo" class="font-mono text-2xl font-black text-amber-500">0</span>
+        </div>
+
+        <!-- Accuracy -->
+        <div class="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 shadow-sm">
+          <span class="text-xs font-bold text-slate-500 block mb-1">準確率 (Accuracy)</span>
+          <span id="settle-accuracy" class="font-mono text-2xl font-black text-cyan-600">100%</span>
+        </div>
+
+        <!-- Speed (WPM / CPM) -->
+        <div class="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 shadow-sm">
+          <span class="text-xs font-bold text-slate-500 block mb-1">打字速度 (WPM / CPM)</span>
+          <span id="settle-wpm" class="font-mono text-2xl font-black text-indigo-600">0 WPM</span>
+        </div>
+      </div>
+
+      <!-- Additional Stats Bar -->
+      <div class="flex items-center justify-around bg-slate-100 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-600 mb-4 font-medium">
+        <div>擊中地鼠: <span id="settle-moles" class="font-bold text-slate-900">0</span> 隻</div>
+        <div>按鍵總數: <span id="settle-keys" class="font-bold text-slate-900">0</span> 次</div>
+        <div>失誤次數: <span id="settle-misses" class="font-bold text-rose-600">0</span> 次</div>
+      </div>
+
+      <!-- Touch Typing Evaluation Card (Visible for Single Letter Practice) -->
+      <div id="settle-finger-card" class="mb-6 p-4 rounded-2xl bg-emerald-50/70 border-2 border-emerald-200 text-left">
+        <div class="flex items-center justify-between text-xs mb-2">
+          <span class="text-slate-600 font-bold">指法練習單元</span>
+          <span id="settle-finger-name" class="font-bold text-emerald-800 bg-white px-2 py-0.5 rounded border border-emerald-300">
+            基準鍵專練 (Home Row)
+          </span>
+        </div>
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-slate-600 font-bold">盲打指法評定</span>
+          <span id="settle-finger-rating" class="font-bold text-amber-700">
+            🌟 正確指法習慣建立中
+          </span>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="space-y-3">
+        <button id="btn-settle-restart" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 hover:brightness-105 text-slate-900 font-black text-base shadow-[0_5px_0_#059669] active:translate-y-1 active:shadow-[0_1px_0_#059669] transition cursor-pointer">
+          再來一局 (Play Again)
+        </button>
+        <div class="grid grid-cols-2 gap-3">
+          <button id="btn-settle-settings" class="py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold transition border border-slate-300 text-xs cursor-pointer">
+            調整設定
+          </button>
+          <button id="btn-download-html" class="py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-emerald-800 hover:text-emerald-900 font-bold transition border border-slate-300 text-xs flex items-center justify-center gap-1 cursor-pointer">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            下載 HTML
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+
+  <!-- GAME LOGIC SCRIPT -->
+  <script>
+    (function () {
+      'use strict';
+
+      /* Safe Storage Helper for iFrame / Sandboxed Environments */
+      const safeStorage = {
+        get(key) {
+          try {
+            return localStorage.getItem(key);
+          } catch (e) {
+            return null;
+          }
+        },
+        set(key, val) {
+          try {
+            localStorage.setItem(key, val);
+          } catch (e) {}
+        }
+      };
+
+      /* -------------------------------------------------------------
+       * 1. VOCABULARY & DICTIONARY DATA
+       * ------------------------------------------------------------- */
+      const VOCAB_EN_WORDS = [
+        "cat", "dog", "sun", "sky", "run", "fox", "box", "red", "cup", "hat",
+        "code", "game", "mole", "star", "moon", "tree", "bird", "lion", "fish", "ship",
+        "apple", "bread", "cloud", "duck", "flame", "grape", "honey", "juice", "lemon", "music",
+        "ninja", "ocean", "pizza", "queen", "river", "space", "tiger", "water", "zebra", "magic",
+        "banana", "castle", "dragon", "energy", "forest", "galaxy", "hammer", "island", "jungle", "kitten",
+        "lizard", "monkey", "nature", "orange", "planet", "rocket", "silver", "turtle", "wizard", "yellow",
+        "arcade", "bridge", "comet", "desert", "falcon", "guitar", "harbor", "island", "knight", "meteor",
+        "nebula", "palace", "puzzle", "robot", "safari", "temple", "unicorn", "valley", "wonder", "zenith",
+        "coding", "strike", "typing", "master", "action", "combos", "spirit", "stream", "target", "matrix"
+      ];
+
+      const VOCAB_ZH_WORDS = [
+        "貓咪", "小狗", "太陽", "月亮", "星星", "藍天", "白雲", "森林", "花朵", "彩虹",
+        "蘋果", "香蕉", "西瓜", "草莓", "麵包", "披薩", "茶杯", "音樂", "節奏", "微風",
+        "遊戲", "程式", "代碼", "鍵盤", "螢幕", "電腦", "網路", "科技", "智慧", "未來",
+        "打字", "高手", "地鼠", "出擊", "連擊", "挑戰", "練習", "速度", "精準", "得分",
+        "冒險", "勇氣", "夢想", "希望", "創造", "奇蹟", "英雄", "光芒", "旋風", "火焰",
+        "冰雪", "雷電", "海洋", "島嶼", "城堡", "火箭", "宇宙", "星球", "騎士", "巨龍",
+        "專注", "卓越", "敏捷", "飛躍", "超越", "極限", "探索", "思考", "學習", "成長",
+        "快樂", "微笑", "朝氣", "活力", "春風", "晨曦", "夕陽", "美景", "微光", "璀璨"
+      ];
+
+      /* -------------------------------------------------------------
+       * 2. PROCEDURAL SOUND SYNTHESIZER (Web Audio API)
+       * ------------------------------------------------------------- */
+      class SoundController {
+        constructor() {
+          this.ctx = null;
+          this.enabled = true;
+        }
+
+        initContext() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+              this.ctx = new AudioCtx();
+            }
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume();
+          }
+        }
+
+        playKeyClick() {
+          if (!this.enabled) return;
+          this.initContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(600, now);
+          osc.frequency.exponentialRampToValueAtTime(120, now + 0.05);
+
+          gain.gain.setValueAtTime(0.2, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          osc.start(now);
+          osc.stop(now + 0.05);
+        }
+
+        playWhack() {
+          if (!this.enabled) return;
+          this.initContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          // Impact punch
+          const osc1 = this.ctx.createOscillator();
+          const gain1 = this.ctx.createGain();
+          osc1.type = 'sine';
+          osc1.frequency.setValueAtTime(260, now);
+          osc1.frequency.exponentialRampToValueAtTime(50, now + 0.18);
+          gain1.gain.setValueAtTime(0.7, now);
+          gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+          // Woodblock harmonic crack
+          const osc2 = this.ctx.createOscillator();
+          const gain2 = this.ctx.createGain();
+          osc2.type = 'square';
+          osc2.frequency.setValueAtTime(800, now);
+          osc2.frequency.exponentialRampToValueAtTime(200, now + 0.08);
+          gain2.gain.setValueAtTime(0.25, now);
+          gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+          osc1.connect(gain1);
+          gain1.connect(this.ctx.destination);
+          osc2.connect(gain2);
+          gain2.connect(this.ctx.destination);
+
+          osc1.start(now);
+          osc2.start(now);
+          osc1.stop(now + 0.18);
+          osc2.stop(now + 0.08);
+        }
+
+        playCombo(comboCount) {
+          if (!this.enabled) return;
+          this.initContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const rootFreq = 440;
+          const step = Math.min(comboCount, 16);
+          const freq = rootFreq * Math.pow(2, step / 12);
+
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now);
+          osc.frequency.setValueAtTime(freq * 1.25, now + 0.06);
+
+          gain.gain.setValueAtTime(0.3, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          osc.start(now);
+          osc.stop(now + 0.22);
+        }
+
+        playMiss() {
+          if (!this.enabled) return;
+          this.initContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(220, now);
+          osc.frequency.exponentialRampToValueAtTime(110, now + 0.25);
+
+          gain.gain.setValueAtTime(0.35, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          osc.start(now);
+          osc.stop(now + 0.25);
+        }
+
+        playGameOver() {
+          if (!this.enabled) return;
+          this.initContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const freqs = [523.25, 493.88, 440.0, 349.23];
+          freqs.forEach((f, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(f, now + idx * 0.12);
+            gain.gain.setValueAtTime(0.3, now + idx * 0.12);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.35);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + idx * 0.12);
+            osc.stop(now + idx * 0.12 + 0.35);
+          });
+        }
+      }
+
+      const sound = new SoundController();
+
+      /* -------------------------------------------------------------
+       * 3. 3D SCENE & PROCEDURAL MOLE / HOLE SYSTEM (MINECRAFT VOXEL)
+       * ------------------------------------------------------------- */
+      const container = document.getElementById('canvas-container');
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x7dd3fc); // Daylight bright cheerful blue sky
+      scene.fog = new THREE.FogExp2(0xbae6fd, 0.015);
+
+      const initW = window.innerWidth || document.documentElement.clientWidth || 800;
+      const initH = window.innerHeight || document.documentElement.clientHeight || 600;
+      const camera = new THREE.PerspectiveCamera(45, (initW > 0 && initH > 0 ? initW / initH : 16 / 9), 0.1, 100);
+      camera.position.set(0, 9.5, 11);
+      camera.lookAt(0, 0, 0.5);
+
+      // Safe Canvas Rounded Rectangle Helper (Cross-browser fallback)
+      function drawRoundedRect(ctx, x, y, w, h, r) {
+        if (typeof ctx.roundRect === 'function') {
+          ctx.roundRect(x, y, w, h, r);
+          return;
+        }
+        if (w < 2 * r) r = w / 2;
+        if (h < 2 * r) r = h / 2;
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+      }
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+      renderer.setSize(initW, initH);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      if (typeof THREE.SRGBColorSpace !== 'undefined') {
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+      } else if (typeof THREE.sRGBEncoding !== 'undefined') {
+        renderer.outputEncoding = THREE.sRGBEncoding;
+      }
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
+      container.appendChild(renderer.domElement);
+
+      function updateCanvasSize() {
+        const w = window.innerWidth || document.documentElement.clientWidth || 800;
+        const h = window.innerHeight || document.documentElement.clientHeight || 600;
+        if (w > 0 && h > 0 && camera && renderer) {
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
+          renderer.setSize(w, h);
+        }
+      }
+
+      // Lighting Rig (Bright, warm daytime sunlight)
+      const ambientLight = new THREE.HemisphereLight(0xffffff, 0xbbf7d0, 0.85);
+      scene.add(ambientLight);
+
+      const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.45);
+      sunLight.position.set(7, 16, 9);
+      sunLight.castShadow = true;
+      sunLight.shadow.mapSize.width = 2048;
+      sunLight.shadow.mapSize.height = 2048;
+      sunLight.shadow.camera.near = 0.5;
+      sunLight.shadow.camera.far = 35;
+      const d = 8.5;
+      sunLight.shadow.camera.left = -d;
+      sunLight.shadow.camera.right = d;
+      sunLight.shadow.camera.top = d;
+      sunLight.shadow.camera.bottom = -d;
+      sunLight.shadow.bias = -0.0001;
+      sunLight.shadow.normalBias = 0.03;
+      scene.add(sunLight);
+
+      // Rim light for clean blocky edges
+      const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.6);
+      rimLight.position.set(-9, 7, -9);
+      scene.add(rimLight);
+
+      // Floating Minecraft Voxel Clouds
+      const cloudGroup = new THREE.Group();
+      scene.add(cloudGroup);
+      const clouds = [];
+      const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
+
+      for (let i = 0; i < 7; i++) {
+        const cMesh = new THREE.Group();
+        const mainW = 4 + Math.random() * 5;
+        const mainD = 3 + Math.random() * 4;
+        const b1 = new THREE.Mesh(new THREE.BoxGeometry(mainW, 0.5, mainD), cloudMat);
+        cMesh.add(b1);
+
+        // Sub puff block
+        const b2 = new THREE.Mesh(new THREE.BoxGeometry(mainW * 0.6, 0.5, mainD * 0.7), cloudMat);
+        b2.position.set((Math.random() - 0.5) * 2, 0.25, (Math.random() - 0.5) * 2);
+        cMesh.add(b2);
+
+        cMesh.position.set(
+          (Math.random() - 0.5) * 36,
+          11.5 + Math.random() * 4,
+          (Math.random() - 0.5) * 30 - 2
+        );
+        cloudGroup.add(cMesh);
+        clouds.push({
+          mesh: cMesh,
+          speed: 0.4 + Math.random() * 0.5
+        });
+      }
+
+      // Procedural Minecraft Stepped Chunk Island (Pure BoxGeometry)
+      const groundGroup = new THREE.Group();
+      scene.add(groundGroup);
+
+      // Top Grass Slab
+      const islandGeo = new THREE.BoxGeometry(14.8, 0.8, 14.8);
+      const islandMat = new THREE.MeshStandardMaterial({
+        color: 0x22c55e, // lush Minecraft grass green
+        roughness: 0.85,
+        metalness: 0.05
+      });
+      const islandMesh = new THREE.Mesh(islandGeo, islandMat);
+      islandMesh.position.y = -0.4;
+      islandMesh.receiveShadow = true;
+      groundGroup.add(islandMesh);
+
+      // Middle Dirt Layer
+      const soilGeo = new THREE.BoxGeometry(15.4, 1.1, 15.4);
+      const soilMat = new THREE.MeshStandardMaterial({
+        color: 0x78350f, // rich blocky soil
+        roughness: 0.95
+      });
+      const soilMesh = new THREE.Mesh(soilGeo, soilMat);
+      soilMesh.position.y = -1.25;
+      soilMesh.receiveShadow = true;
+      groundGroup.add(soilMesh);
+
+      // Bottom Bedrock / Cobblestone Slab
+      const stoneGeo = new THREE.BoxGeometry(15.9, 1.4, 15.9);
+      const stoneMat = new THREE.MeshStandardMaterial({
+        color: 0x64748b, // cool cobblestone base
+        roughness: 0.9
+      });
+      const stoneMesh = new THREE.Mesh(stoneGeo, stoneMat);
+      stoneMesh.position.y = -2.4;
+      stoneMesh.receiveShadow = true;
+      groundGroup.add(stoneMesh);
+
+      // Voxel Grass Fringe blocks hanging down the island sides
+      const fringeMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.85 });
+      for (let side = 0; side < 4; side++) {
+        for (let k = -6; k <= 6; k += 2) {
+          const fringe = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.35 + (Math.abs(k) % 2) * 0.2, 0.2), fringeMat);
+          if (side === 0) fringe.position.set(k, -0.9, 7.45);
+          else if (side === 1) fringe.position.set(k, -0.9, -7.45);
+          else if (side === 2) {
+            fringe.rotation.y = Math.PI / 2;
+            fringe.position.set(7.45, -0.9, k);
+          } else {
+            fringe.rotation.y = Math.PI / 2;
+            fringe.position.set(-7.45, -0.9, k);
+          }
+          groundGroup.add(fringe);
+        }
+      }
+
+      // Voxel Decorative Perimeter (Minecraft Wooden Fence Posts, Flowers & Mushrooms)
+      const fenceMeshes = [];
+      const mushroomCaps = [];
+
+      // 4 Sides of Wooden Fences
+      const fencePostGeo = new THREE.BoxGeometry(0.2, 0.9, 0.2);
+      const fencePostMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.85 });
+
+      const fencePositions = [];
+      for (let x = -6.4; x <= 6.4; x += 1.6) {
+        fencePositions.push([x, 6.4]);
+        fencePositions.push([x, -6.4]);
+      }
+      for (let z = -5.0; z <= 5.0; z += 1.6) {
+        fencePositions.push([6.4, z]);
+        fencePositions.push([-6.4, z]);
+      }
+
+      fencePositions.forEach(([fx, fz], idx) => {
+        const post = new THREE.Mesh(fencePostGeo, fencePostMat);
+        post.position.set(fx, 0.45, fz);
+        post.castShadow = true;
+        groundGroup.add(post);
+        fenceMeshes.push(post);
+
+        // Cute Voxel Red Mushrooms & Dandelions on perimeter corners
+        if (idx % 5 === 0) {
+          const propGroup = new THREE.Group();
+          // Voxel Stalk
+          const stem = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.32, 0.14), new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.8 }));
+          stem.position.y = 0.16;
+          propGroup.add(stem);
+
+          // Voxel Stepped Mushroom Cap
+          const cap = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.22, 0.42), new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.4 }));
+          cap.position.y = 0.35;
+          propGroup.add(cap);
+          mushroomCaps.push(cap);
+
+          // White pixel spots on cap
+          const spotMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
+          const spot1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.12), spotMat);
+          spot1.position.set(0, 0.46, 0);
+          propGroup.add(spot1);
+
+          propGroup.position.set(fx * 0.85, 0, fz * 0.85);
+          groundGroup.add(propGroup);
+        } else if (idx % 7 === 0) {
+          // Cute Voxel Yellow Dandelion
+          const flowerGroup = new THREE.Group();
+          const stem = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.28, 0.08), new THREE.MeshStandardMaterial({ color: 0x15803d }));
+          stem.position.y = 0.14;
+          flowerGroup.add(stem);
+
+          const blossom = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, 0.24), new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4 }));
+          blossom.position.y = 0.32;
+          flowerGroup.add(blossom);
+
+          flowerGroup.position.set(fx * 0.88, 0, fz * 0.88);
+          groundGroup.add(flowerGroup);
+        }
+      });
+
+      /* -------------------------------------------------------------
+       * 4. 3D VOXEL MALLET / MINECRAFT HAMMER OBJECT
+       * ------------------------------------------------------------- */
+      const hammerGroup = new THREE.Group();
+      hammerGroup.visible = false;
+      scene.add(hammerGroup);
+
+      // Voxel Wooden Shaft (Square block)
+      const hammerHandleGeo = new THREE.BoxGeometry(0.12, 1.6, 0.12);
+      const hammerHandleMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.7 });
+      const hammerHandle = new THREE.Mesh(hammerHandleGeo, hammerHandleMat);
+      hammerHandle.position.y = 0.8;
+      hammerHandle.castShadow = true;
+      hammerGroup.add(hammerHandle);
+
+      // Voxel Hammer Head (Minecraft Square Block)
+      const hammerHeadGeo = new THREE.BoxGeometry(0.65, 0.65, 1.05);
+      const hammerHeadMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.6 });
+      const hammerHead = new THREE.Mesh(hammerHeadGeo, hammerHeadMat);
+      hammerHead.position.y = 1.6;
+      hammerHead.castShadow = true;
+      hammerGroup.add(hammerHead);
+
+      // Voxel Golden Reinforced Edges
+      const goldBandMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3, metalness: 0.6 });
+      const bandFront = new THREE.Mesh(new THREE.BoxGeometry(0.70, 0.70, 0.14), goldBandMat);
+      bandFront.position.set(0, 1.6, 0.45);
+      hammerGroup.add(bandFront);
+
+      const bandBack = new THREE.Mesh(new THREE.BoxGeometry(0.70, 0.70, 0.14), goldBandMat);
+      bandBack.position.set(0, 1.6, -0.45);
+      hammerGroup.add(bandBack);
+
+      let hammerAnim = {
+        active: false,
+        timer: 0,
+        startX: 0,
+        startZ: 0,
+        targetX: 0,
+        targetZ: 0
+      };
+
+      function triggerHammerStrike(x, z) {
+        hammerGroup.visible = true;
+        hammerAnim.active = true;
+        hammerAnim.timer = 0;
+        hammerAnim.targetX = x;
+        hammerAnim.targetZ = z;
+        hammerGroup.position.set(x, 0.8, z);
+        hammerGroup.rotation.set(-0.8, 0, 0);
+      }
+
+      /* -------------------------------------------------------------
+       * 5. 3D VOXEL CRIT PARTICLES (Minecraft block break effect)
+       * ------------------------------------------------------------- */
+      const particles = [];
+      const particleGeo = new THREE.BoxGeometry(0.14, 0.14, 0.14); // Pure cubic voxels!
+      const particleColors = [0x22c55e, 0xfacc15, 0x38bdf8, 0xf43f5e, 0xffffff];
+
+      for (let i = 0; i < 40; i++) {
+        const mat = new THREE.MeshStandardMaterial({
+          color: particleColors[i % particleColors.length],
+          roughness: 0.3,
+          metalness: 0.2
+        });
+        const mesh = new THREE.Mesh(particleGeo, mat);
+        mesh.visible = false;
+        scene.add(mesh);
+        particles.push({
+          mesh: mesh,
+          vx: 0,
+          vy: 0,
+          vz: 0,
+          rotSpeed: 0,
+          life: 0,
+          maxLife: 0.6
+        });
+      }
+
+      function spawnParticles(x, y, z) {
+        let count = 14;
+        for (const p of particles) {
+          if (!p.mesh.visible && count > 0) {
+            p.mesh.visible = true;
+            p.mesh.position.set(x, y, z);
+            const speed = 2.5 + Math.random() * 3.5;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.random() * Math.PI * 0.4;
+            p.vx = Math.cos(theta) * Math.sin(phi) * speed;
+            p.vy = Math.cos(phi) * speed + 2.0;
+            p.vz = Math.sin(theta) * Math.sin(phi) * speed;
+            p.life = 0;
+            p.maxLife = 0.5 + Math.random() * 0.3;
+            p.rotSpeed = (Math.random() - 0.5) * 15;
+            p.mesh.scale.setScalar(1);
+            count--;
+          }
+        }
+      }
+
+      /* -------------------------------------------------------------
+       * 5.5 TOUCH TYPING FINGERING DATA & PRACTICE SETS
+       * ------------------------------------------------------------- */
+      const KEYBOARD_FINGER_MAP = {
+        // Left Pinky (左手小指) - #f43f5e
+        'Q': { finger: 'L_PINKY', name: '左手小指', color: '#f43f5e', isAnchor: false },
+        'A': { finger: 'L_PINKY', name: '左手小指', color: '#f43f5e', isAnchor: false },
+        'Z': { finger: 'L_PINKY', name: '左手小指', color: '#f43f5e', isAnchor: false },
+
+        // Left Ring (左手無名指) - #fb923c
+        'W': { finger: 'L_RING', name: '左手無名指', color: '#fb923c', isAnchor: false },
+        'S': { finger: 'L_RING', name: '左手無名指', color: '#fb923c', isAnchor: false },
+        'X': { finger: 'L_RING', name: '左手無名指', color: '#fb923c', isAnchor: false },
+
+        // Left Middle (左手中指) - #facc15
+        'E': { finger: 'L_MIDDLE', name: '左手中指', color: '#facc15', isAnchor: false },
+        'D': { finger: 'L_MIDDLE', name: '左手中指', color: '#facc15', isAnchor: false },
+        'C': { finger: 'L_MIDDLE', name: '左手中指', color: '#facc15', isAnchor: false },
+
+        // Left Index (左手食指 - F 為基準定位鍵) - #10b981
+        'R': { finger: 'L_INDEX', name: '左手食指', color: '#10b981', isAnchor: false },
+        'T': { finger: 'L_INDEX', name: '左手食指', color: '#10b981', isAnchor: false },
+        'F': { finger: 'L_INDEX', name: '左手食指', color: '#10b981', isAnchor: true },
+        'G': { finger: 'L_INDEX', name: '左手食指', color: '#10b981', isAnchor: false },
+        'V': { finger: 'L_INDEX', name: '左手食指', color: '#10b981', isAnchor: false },
+        'B': { finger: 'L_INDEX', name: '左手食指', color: '#10b981', isAnchor: false },
+
+        // Right Index (右手食指 - J 為基準定位鍵) - #06b6d4
+        'Y': { finger: 'R_INDEX', name: '右手食指', color: '#06b6d4', isAnchor: false },
+        'U': { finger: 'R_INDEX', name: '右手食指', color: '#06b6d4', isAnchor: false },
+        'H': { finger: 'R_INDEX', name: '右手食指', color: '#06b6d4', isAnchor: false },
+        'J': { finger: 'R_INDEX', name: '右手食指', color: '#06b6d4', isAnchor: true },
+        'N': { finger: 'R_INDEX', name: '右手食指', color: '#06b6d4', isAnchor: false },
+        'M': { finger: 'R_INDEX', name: '右手食指', color: '#06b6d4', isAnchor: false },
+
+        // Right Middle (右手中指) - #3b82f6
+        'I': { finger: 'R_MIDDLE', name: '右手中指', color: '#3b82f6', isAnchor: false },
+        'K': { finger: 'R_MIDDLE', name: '右手中指', color: '#3b82f6', isAnchor: false },
+
+        // Right Ring (右手無名指) - #818cf8
+        'O': { finger: 'R_RING', name: '右手無名指', color: '#818cf8', isAnchor: false },
+        'L': { finger: 'R_RING', name: '右手無名指', color: '#818cf8', isAnchor: false },
+
+        // Right Pinky (右手小指) - #c084fc
+        'P': { finger: 'R_PINKY', name: '右手小指', color: '#c084fc', isAnchor: false }
+      };
+
+      const FINGER_SETS = {
+        home: {
+          id: 'home',
+          name: '基準鍵專練',
+          enName: 'Home Row',
+          chars: 'ASDFGHJKL',
+          desc: '初學者必練！掌握食指 F、J 定位鍵與基準行，建立標準盲打盲按手感',
+          keysBadge: 'A S D F G H J K L'
+        },
+        index: {
+          id: 'index',
+          name: '食指強化',
+          enName: 'Index Fingers',
+          chars: 'FGRTVBJHUYNM',
+          desc: '靈活調動左手 (F,G,R,T,V,B) 與右手 (J,H,U,Y,N,M) 食指高頻主力鍵',
+          keysBadge: 'R T F G V B / Y U H J N M'
+        },
+        middle_ring: {
+          id: 'middle_ring',
+          name: '中指與無名指',
+          enName: 'Middle & Ring',
+          chars: 'EDCIKWSXOL',
+          desc: '強化無名指與中指的獨立屈伸與鍵位控制，擺脫手指連動誤觸',
+          keysBadge: 'E D C I K / W S X O L'
+        },
+        pinky: {
+          id: 'pinky',
+          name: '小指專練',
+          enName: 'Pinky Fingers',
+          chars: 'QAZP',
+          desc: '鍛鍊最容易使不上力的小指鍵位，克服邊界按鍵恐懼',
+          keysBadge: 'Q A Z / P'
+        },
+        left_hand: {
+          id: 'left_hand',
+          name: '左手半區專練',
+          enName: 'Left Hand Only',
+          chars: 'QWERTASDFGZXCVB',
+          desc: '專注左手 15 鍵盲打協調，平衡雙手打字速度',
+          keysBadge: '左手 15 鍵'
+        },
+        right_hand: {
+          id: 'right_hand',
+          name: '右手半區專練',
+          enName: 'Right Hand Only',
+          chars: 'YUIOPHJKLNM',
+          desc: '專注右手 11 鍵盲打記憶與精準鍵位落點',
+          keysBadge: '右手 11 鍵'
+        },
+        top_row: {
+          id: 'top_row',
+          name: '上排鍵伸展',
+          enName: 'Top Row',
+          chars: 'QWERTYUIOP',
+          desc: '訓練手指從基準行向上伸展的肌肉記憶與回位習慣',
+          keysBadge: 'Q W E R T Y U I O P'
+        },
+        bottom_row: {
+          id: 'bottom_row',
+          name: '下排鍵下屈',
+          enName: 'Bottom Row',
+          chars: 'ZXCVBNM',
+          desc: '訓練手指從基準行向下微收彎曲的精確落點與手感',
+          keysBadge: 'Z X C V B N M'
+        },
+        all: {
+          id: 'all',
+          name: '全鍵位綜合',
+          enName: 'All 26 Keys',
+          chars: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+          desc: '標準 QWERTY 鍵盤 26 鍵全隨機綜合實戰挑戰',
+          keysBadge: 'A-Z 全鍵位'
+        }
+      };
+
+      /* -------------------------------------------------------------
+       * 6. THEMES & DYNAMIC CHARACTERS (MINECRAFT VOXEL PALETTE)
+       * ------------------------------------------------------------- */
+      const THEMES = {
+        easy: {
+          key: 'easy',
+          name: '清新綠 · 體素烏龜',
+          characterType: 'turtle',
+          characterTitle: '體素烏龜',
+          icon: '🐢',
+          bgColor: 0x7dd3fc, // Bright cheerful Minecraft blue sky
+          fogColor: 0xbae6fd,
+          ambientSky: 0xffffff,
+          ambientGround: 0xbbf7d0,
+          sunColor: 0xfffbeb,
+          rimColor: 0x38bdf8,
+          islandColor: 0x22c55e, // Minecraft lush grass green
+          soilColor: 0x78350f, // rich soil
+          moundColor: 0x16a34a, // hole curb green
+          fenceColor: 0x92400e, // oak wood
+          mushCapColor: 0xef4444,
+          badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+          accentHex: '#10b981',
+          particleColors: [0x22c55e, 0x4ade80, 0x86efac, 0xfacc15, 0xffffff]
+        },
+        medium: {
+          key: 'medium',
+          name: '溫暖橙 · 體素柴犬',
+          characterType: 'shiba',
+          characterTitle: '體素柴犬',
+          icon: '🐕',
+          bgColor: 0xfde047, // Golden warm daylight sky
+          fogColor: 0xfef08a,
+          ambientSky: 0xffffff,
+          ambientGround: 0xfed7aa,
+          sunColor: 0xffedd5,
+          rimColor: 0xfb923c,
+          islandColor: 0xf59e0b, // Warm golden grass
+          soilColor: 0x92400e,
+          moundColor: 0xd97706,
+          fenceColor: 0x78350f,
+          mushCapColor: 0xf97316,
+          badgeClass: 'bg-amber-100 text-amber-800 border-amber-300',
+          accentHex: '#f59e0b',
+          particleColors: [0xf59e0b, 0xf97316, 0xfbbf24, 0xea580c, 0xffffff]
+        },
+        hard: {
+          key: 'hard',
+          name: '夢幻粉 · 體素暴牙兔',
+          characterType: 'bunny',
+          characterTitle: '體素暴牙兔',
+          icon: '🐰',
+          bgColor: 0xfbcfe8, // Pastel cherry blossom pink sky
+          fogColor: 0xfce7f3,
+          ambientSky: 0xffffff,
+          ambientGround: 0xfbcfe8,
+          sunColor: 0xfff1f2,
+          rimColor: 0xf472b6,
+          islandColor: 0xec4899, // Pastel cherry grass
+          soilColor: 0x831843,
+          moundColor: 0xdb2777,
+          fenceColor: 0x500724,
+          mushCapColor: 0xf43f5e,
+          badgeClass: 'bg-pink-100 text-pink-800 border-pink-300',
+          accentHex: '#ec4899',
+          particleColors: [0xf472b6, 0xfb7185, 0xf43f5e, 0xfda4af, 0xffffff]
+        }
+      };
+
+      class MoleHole {
+        constructor(index, gridX, gridZ, posX, posZ) {
+          this.index = index;
+          this.gridX = gridX;
+          this.gridZ = gridZ;
+          this.posX = posX;
+          this.posZ = posZ;
+
+          // Game state
+          this.state = 'HIDDEN'; // 'HIDDEN', 'RISING', 'UP', 'FALLING', 'HIT'
+          this.stateTimer = 0;
+          this.stayDuration = 4.0;
+          this.characterType = 'turtle';
+          this.currentY = -this.getHoleDepth();
+          this.targetWord = '';
+          this.typedCount = 0;
+          this.isLocked = false;
+
+          // Mesh tracking for material swap
+          this.tintableMeshes = [];
+          this.originalMaterials = [];
+
+          // Root 3D container
+          this.rootGroup = new THREE.Group();
+          this.rootGroup.position.set(posX, 0, posZ);
+          scene.add(this.rootGroup);
+
+          // 1. Build Hole Rim & Deep Pit
+          this.buildHoleGraphics();
+
+          // 2. Mole/Character Dynamic Container
+          this.moleGroup = new THREE.Group();
+          this.moleGroup.position.y = this.currentY;
+          this.moleGroup.visible = false; // Completely hidden by default when below hole
+          this.rootGroup.add(this.moleGroup);
+
+          this.characterContainer = new THREE.Group();
+          this.moleGroup.add(this.characterContainer);
+
+          // Shared Hit material (Bright Minecraft red damage flash)
+          this.hitMaterial = new THREE.MeshStandardMaterial({
+            color: 0xef4444,
+            roughness: 0.45,
+            emissive: 0xb91c1c,
+            emissiveIntensity: 0.65
+          });
+
+          // 3. Build 3D Overhead Billboard Badge
+          this.buildBillboardBadge();
+
+          // 4. Target Lock Floor Indicator (Voxel Frame)
+          this.buildTargetRing();
+
+          // Initial Character
+          this.setCharacterType('turtle');
+        }
+
+        getHoleDepth() {
+          return 0.04;
+        }
+
+        buildHoleGraphics() {
+          // 1. Recessed Hole Cavity Floor (Dark charcoal stone, elevated to y = 0.02 above island grass at y = 0.00)
+          // 0.02m vertical separation mathematically eliminates Z-fighting with the island grass plane!
+          const pitFloorMat = new THREE.MeshStandardMaterial({
+            color: 0x18181b,
+            roughness: 0.92,
+            metalness: 0.08
+          });
+          // Size 1.44 x 0.04 x 1.44 (centered at y = 0.02, bottom at 0.00, top at 0.04)
+          const pitFloorGeo = new THREE.BoxGeometry(1.44, 0.04, 1.44);
+          const pitFloor = new THREE.Mesh(pitFloorGeo, pitFloorMat);
+          pitFloor.position.set(0, 0.02, 0);
+          pitFloor.receiveShadow = true;
+          this.rootGroup.add(pitFloor);
+
+          // 2. Voxel Square Curb Mound Border (4 clean elevated blocks of height 0.28m wrapping the open rim)
+          // Curbs extend from y = 0.00 to y = 0.28, creating a 0.24m deep recessed hole cavity!
+          const moundMat = new THREE.MeshStandardMaterial({
+            color: 0x16a34a,
+            roughness: 0.85
+          });
+          const curbGroup = new THREE.Group();
+
+          // Front & Back curbs: width 1.86, height 0.28, depth 0.24, centered at y = 0.14
+          // Inner edge at z = 0.69, outer edge at z = 0.93. Bottom at y = 0.00, top at y = 0.28
+          const curbFBGeo = new THREE.BoxGeometry(1.86, 0.28, 0.24);
+          const curbF = new THREE.Mesh(curbFBGeo, moundMat);
+          curbF.position.set(0, 0.14, 0.81);
+          curbF.receiveShadow = true;
+          curbGroup.add(curbF);
+
+          const curbB = new THREE.Mesh(curbFBGeo, moundMat);
+          curbB.position.set(0, 0.14, -0.81);
+          curbB.receiveShadow = true;
+          curbGroup.add(curbB);
+
+          // Left & Right curbs: width 0.24, height 0.28, depth 1.38, centered at y = 0.14
+          // Inner edge at x = 0.69, outer edge at x = 0.93. Meets front/back curbs cleanly at z = +/-0.69
+          const curbLRGeo = new THREE.BoxGeometry(0.24, 0.28, 1.38);
+          const curbL = new THREE.Mesh(curbLRGeo, moundMat);
+          curbL.position.set(-0.81, 0.14, 0);
+          curbL.receiveShadow = true;
+          curbGroup.add(curbL);
+
+          const curbR = new THREE.Mesh(curbLRGeo, moundMat);
+          curbR.position.set(0.81, 0.14, 0);
+          curbR.receiveShadow = true;
+          curbGroup.add(curbR);
+
+          this.moundMesh = curbF; // Reference for theme color updates
+          this.moundMaterial = moundMat;
+          this.rootGroup.add(curbGroup);
+        }
+
+        setCharacterType(type) {
+          this.characterType = type;
+          // Clean existing character children
+          while (this.characterContainer.children.length > 0) {
+            this.characterContainer.remove(this.characterContainer.children[0]);
+          }
+          this.tintableMeshes = [];
+          this.originalMaterials = [];
+
+          if (type === 'turtle') {
+            this.buildTurtleCharacter();
+            if (this.billboardSprite) this.billboardSprite.position.set(0, 1.85, 0.35);
+          } else if (type === 'shiba') {
+            this.buildShibaCharacter();
+            if (this.billboardSprite) this.billboardSprite.position.set(0, 2.05, 0.35);
+          } else {
+            this.buildBunnyCharacter();
+            // Position billboard slightly forward in Z so bunny's ears stand cleanly BEHIND the label tag!
+            if (this.billboardSprite) this.billboardSprite.position.set(0, 2.28, 0.38);
+          }
+
+          if (this.state === 'HIDDEN') {
+            this.currentY = 0.04;
+            this.moleGroup.position.y = 0.04;
+            this.moleGroup.scale.set(1, 0.05, 1);
+            this.moleGroup.visible = false;
+          }
+        }
+
+        registerTintable(mesh) {
+          this.tintableMeshes.push(mesh);
+          this.originalMaterials.push(mesh.material);
+        }
+
+        buildTurtleCharacter() {
+          // 麥塊可愛體素金甲烏龜 - 高對比高飽和度升級 (Pure BoxGeometry)
+          // 焦糖深琥珀背甲底層與金琥珀頂層，在綠色草地上極致突出立體
+          const shellMat = new THREE.MeshStandardMaterial({
+            color: 0x9a3412, // 深濃焦糖琥珀紅棕（與綠色草地形成強烈互補與立體明暗）
+            roughness: 0.45,
+            emissive: 0x7c2d12,
+            emissiveIntensity: 0.18
+          });
+          const shellTopMat = new THREE.MeshStandardMaterial({
+            color: 0xd97706, // 頂層耀眼金琥珀
+            roughness: 0.40,
+            emissive: 0xb45309,
+            emissiveIntensity: 0.20
+          });
+          const shellRimMat = new THREE.MeshStandardMaterial({
+            color: 0x84cc16, // 電光青檸金綠鑲邊
+            roughness: 0.35,
+            emissive: 0x4d7c0f,
+            emissiveIntensity: 0.22
+          });
+          const skinMat = new THREE.MeshStandardMaterial({
+            color: 0xfacc15, // 鮮豔高飽和向日葵暖陽金黃
+            roughness: 0.35,
+            emissive: 0xeab308,
+            emissiveIntensity: 0.20
+          });
+          const bibMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.50 }); // 柔亮奶黃下巴與肉球
+          const hexMat = new THREE.MeshStandardMaterial({
+            color: 0xfef08a, // 璀璨耀眼日芒金甲片（高反光高自發光）
+            roughness: 0.20,
+            emissive: 0xfacc15,
+            emissiveIntensity: 0.42
+          });
+          const blushMat = new THREE.MeshStandardMaterial({
+            color: 0xff0055,
+            roughness: 0.60,
+            emissive: 0xbe123c,
+            emissiveIntensity: 0.25
+          }); // 鮮艷覆盆莓粉腮紅
+          const snoutMat = new THREE.MeshStandardMaterial({
+            color: 0xff4500,
+            roughness: 0.40,
+            emissive: 0xd97706,
+            emissiveIntensity: 0.18
+          }); // 鮮豔朱紅小嘴吻
+          const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.10 });
+          const eyePupilMat = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.05 });
+
+          // 1. Stepped Voxel Shell Base (底層與頂層階梯方塊背甲)
+          const shellBase = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.48, 1.25), shellMat);
+          shellBase.position.set(0, 0.44, -0.05);
+          shellBase.castShadow = true;
+          this.characterContainer.add(shellBase);
+          this.registerTintable(shellBase);
+
+          // Top stepped carapace cube
+          const shellTop = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.26, 0.90), shellTopMat);
+          shellTop.position.set(0, 0.79, -0.05);
+          shellTop.castShadow = true;
+          this.characterContainer.add(shellTop);
+          this.registerTintable(shellTop);
+
+          // Shell Rim Curb blocks (鮮豔亮檸檬草綠四邊框線)
+          const rimFront = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.12, 0.12), shellRimMat);
+          rimFront.position.set(0, 0.24, 0.60);
+          this.characterContainer.add(rimFront);
+          const rimBack = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.12, 0.12), shellRimMat);
+          rimBack.position.set(0, 0.24, -0.70);
+          this.characterContainer.add(rimBack);
+
+          // 5 Golden Hex Pixel Tiles on shell (璀璨耀眼日芒金黃龜甲塊)
+          const hexTiles = [
+            [0, 0.94, -0.05, 0.32, 0.32], // Center
+            [0, 0.94, 0.26, 0.24, 0.22],  // Front
+            [0, 0.94, -0.36, 0.24, 0.22], // Back
+            [-0.48, 0.58, -0.05, 0.22, 0.28], // Left
+            [0.48, 0.58, -0.05, 0.22, 0.28]  // Right
+          ];
+          hexTiles.forEach(([tx, ty, tz, tw, td]) => {
+            const tile = new THREE.Mesh(new THREE.BoxGeometry(tw, 0.05, td), hexMat);
+            tile.position.set(tx, ty, tz);
+            this.characterContainer.add(tile);
+          });
+
+          // 2. Voxel Head (鮮豔亮麗向日葵金黃大頭)
+          const head = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.54, 0.56), skinMat);
+          head.position.set(0, 0.98, 0.55);
+          head.castShadow = true;
+          this.characterContainer.add(head);
+          this.registerTintable(head);
+
+          // Cream Chin bib
+          const chin = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.24, 0.26), bibMat);
+          chin.position.set(0, 0.76, 0.62);
+          this.characterContainer.add(chin);
+
+          // Cute Orange Snout
+          const snout = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.16, 0.16), snoutMat);
+          snout.position.set(0, 0.92, 0.88);
+          this.characterContainer.add(snout);
+
+          // Pixel Anime Eyes (Minecraft 像素大眼)
+          [-0.17, 0.17].forEach(x => {
+            const eyeWhite = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.04), eyeWhiteMat);
+            eyeWhite.position.set(x, 1.08, 0.84);
+            this.characterContainer.add(eyeWhite);
+
+            const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.05), eyePupilMat);
+            pupil.position.set(x + (x > 0 ? -0.01 : 0.01), 1.08, 0.85);
+            this.characterContainer.add(pupil);
+
+            const shine = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.06), eyeWhiteMat);
+            shine.position.set(x + (x > 0 ? 0.02 : -0.02), 1.11, 0.86);
+            this.characterContainer.add(shine);
+          });
+
+          // Rosy Pink Cheeks
+          [-0.24, 0.24].forEach(x => {
+            const blush = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.04), blushMat);
+            blush.position.set(x, 0.94, 0.84);
+            this.characterContainer.add(blush);
+          });
+
+          // Voxel Flippers (趴在洞口的可愛金黃體素前爪)
+          [-0.52, 0.52].forEach(x => {
+            const flipper = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.42), skinMat);
+            flipper.position.set(x, 0.35, 0.52);
+            this.characterContainer.add(flipper);
+            this.registerTintable(flipper);
+
+            const pad = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.05, 0.25), bibMat);
+            pad.position.set(x, 0.43, 0.55);
+            this.characterContainer.add(pad);
+          });
+        }
+
+        buildShibaCharacter() {
+          // 麥塊可愛體素日本柴犬 - 高對比高飽和赤狐色 (在橙色場景中極度突出醒目!)
+          const furMat = new THREE.MeshStandardMaterial({
+            color: 0xc2410c, // 濃郁赤狐深金紅（比橙色地皮深沉鮮艷，對比極為強烈）
+            roughness: 0.48,
+            emissive: 0x9a3412,
+            emissiveIntensity: 0.22
+          });
+          const whiteMat = new THREE.MeshStandardMaterial({
+            color: 0xffffff, // 耀眼純白臉頰、口鼻、胸毛與爪子
+            roughness: 0.25,
+            emissive: 0xffffff,
+            emissiveIntensity: 0.12
+          });
+          const blackMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.05 }); // 鋼琴深邃純黑
+          const tongueMat = new THREE.MeshStandardMaterial({
+            color: 0xff1493, // 鮮豔電光泡泡糖粉舌頭
+            roughness: 0.25,
+            emissive: 0xff007f,
+            emissiveIntensity: 0.30
+          });
+          const innerEarMat = new THREE.MeshStandardMaterial({
+            color: 0xf43f5e, // 鮮豔珊瑚亮櫻粉內耳
+            roughness: 0.45,
+            emissive: 0xe11d48,
+            emissiveIntensity: 0.20
+          });
+          const collarMat = new THREE.MeshStandardMaterial({
+            color: 0x06b6d4, // 日系亮青藍項圈（與橙色形成絕美互補對比色!）
+            roughness: 0.35,
+            emissive: 0x0891b2,
+            emissiveIntensity: 0.25
+          });
+          const bellMat = new THREE.MeshStandardMaterial({
+            color: 0xfacc15, // 金黃鈴鐺
+            roughness: 0.20,
+            emissive: 0xeab308,
+            emissiveIntensity: 0.35
+          });
+
+          // 1. Shiba Voxel Body
+          const body = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.95, 0.92), furMat);
+          body.position.y = 0.52;
+          body.castShadow = true;
+          this.characterContainer.add(body);
+          this.registerTintable(body);
+
+          // White chest bib block
+          const bib = new THREE.Mesh(new THREE.BoxGeometry(0.60, 0.75, 0.25), whiteMat);
+          bib.position.set(0, 0.50, 0.44);
+          this.characterContainer.add(bib);
+
+          // Japanese Cyan Scarf / Collar (青藍色項圈領巾 - 與橙色地皮形成完美的互補對比)
+          const collar = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.12, 0.94), collarMat);
+          collar.position.set(0, 0.88, 0.05);
+          this.characterContainer.add(collar);
+          this.registerTintable(collar);
+
+          const bell = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.12), bellMat);
+          bell.position.set(0, 0.85, 0.54);
+          this.characterContainer.add(bell);
+
+          // 2. Shiba Voxel Head
+          const head = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.85, 0.90), furMat);
+          head.position.set(0, 1.15, 0.05);
+          head.castShadow = true;
+          this.characterContainer.add(head);
+          this.registerTintable(head);
+
+          // White Urajiro Cheek Blocks
+          [-0.30, 0.30].forEach(x => {
+            const cheek = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.38, 0.28), whiteMat);
+            cheek.position.set(x, 1.02, 0.38);
+            this.characterContainer.add(cheek);
+          });
+
+          // White Snout Muzzle Box
+          const muzzle = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.30, 0.32), whiteMat);
+          muzzle.position.set(0, 1.02, 0.54);
+          this.characterContainer.add(muzzle);
+
+          // Glossy black truffle nose block
+          const nose = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.10), blackMat);
+          nose.position.set(0, 1.12, 0.71);
+          this.characterContainer.add(nose);
+
+          // Cute pink tongue panting
+          const tongue = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.06, 0.16), tongueMat);
+          tongue.position.set(0, 0.90, 0.62);
+          this.characterContainer.add(tongue);
+
+          // Dark anime pixel eyes
+          [-0.20, 0.20].forEach(x => {
+            const eye = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.04), blackMat);
+            eye.position.set(x, 1.25, 0.51);
+            this.characterContainer.add(eye);
+
+            const shine = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.05), whiteMat);
+            shine.position.set(x + (x > 0 ? 0.02 : -0.02), 1.27, 0.52);
+            this.characterContainer.add(shine);
+          });
+
+          // ICONIC WHITE EYEBROW PIXEL DOTS (招牌柴犬麻糬點點眉毛)
+          [-0.20, 0.20].forEach(x => {
+            const dot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.05), whiteMat);
+            dot.position.set(x, 1.40, 0.51);
+            this.characterContainer.add(dot);
+          });
+
+          // Stepped Voxel Prick Ears (立體三角形體素耳朵)
+          [-0.34, 0.34].forEach(x => {
+            const earOuter = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.38, 0.20), furMat);
+            earOuter.position.set(x, 1.68, 0.05);
+            this.characterContainer.add(earOuter);
+            this.registerTintable(earOuter);
+
+            const earInner = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.26, 0.06), innerEarMat);
+            earInner.position.set(x, 1.66, 0.13);
+            this.characterContainer.add(earInner);
+          });
+
+          // White-socked front paws
+          [-0.48, 0.48].forEach(x => {
+            const paw = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.26), whiteMat);
+            paw.position.set(x, 0.35, 0.50);
+            this.characterContainer.add(paw);
+          });
+        }
+
+        buildBunnyCharacter() {
+          // 麥塊可愛體素暴牙白兔 - 耀眼極致純雪白兔毛與高對比深色口腔大暴牙
+          const whiteMat = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            roughness: 0.18,
+            emissive: 0xffffff,
+            emissiveIntensity: 0.16
+          }); // 耀眼純雪白兔毛（在粉紅場景中發光，輪廓無比分明）
+          const innerEarMat = new THREE.MeshStandardMaterial({
+            color: 0xbe185d, // 濃艷深桃紅內耳
+            roughness: 0.35,
+            emissive: 0x9d174d,
+            emissiveIntensity: 0.28
+          });
+          const noseMat = new THREE.MeshStandardMaterial({
+            color: 0xff1744, // 鮮豔電光草莓紅鼻頭
+            roughness: 0.25,
+            emissive: 0xd50000,
+            emissiveIntensity: 0.30
+          });
+          const mouthMat = new THREE.MeshStandardMaterial({
+            color: 0x2e0219, // 極深紫紅口腔襯托，襯托暴牙超級突出！
+            roughness: 0.90
+          });
+          const teethMat = new THREE.MeshStandardMaterial({
+            color: 0xffffff, // 耀眼潔白大門牙（高自發光）
+            roughness: 0.05,
+            emissive: 0xffffff,
+            emissiveIntensity: 0.35
+          });
+          const blushMat = new THREE.MeshStandardMaterial({
+            color: 0xff2d55,
+            roughness: 0.60,
+            emissive: 0xe11d48,
+            emissiveIntensity: 0.25
+          }); // 鮮豔霓虹粉腮紅
+          const eyeMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.05 });
+          const pawPadMat = new THREE.MeshStandardMaterial({
+            color: 0xd946ef,
+            roughness: 0.40,
+            emissive: 0xc026d3,
+            emissiveIntensity: 0.22
+          });
+
+          // 1. Bunny Voxel Body
+          const body = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.95, 0.90), whiteMat);
+          body.position.y = 0.52;
+          body.castShadow = true;
+          this.characterContainer.add(body);
+          this.registerTintable(body);
+
+          // 2. Bunny Voxel Head
+          const head = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.90, 0.92), whiteMat);
+          head.position.set(0, 1.15, 0.05);
+          head.castShadow = true;
+          this.characterContainer.add(head);
+          this.registerTintable(head);
+
+          // Chubby Cheek Cubes
+          [-0.28, 0.28].forEach(x => {
+            const cheek = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.36, 0.26), whiteMat);
+            cheek.position.set(x, 0.98, 0.42);
+            this.characterContainer.add(cheek);
+            this.registerTintable(cheek);
+
+            // Vivid pink blush pixels
+            const blush = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.04), blushMat);
+            blush.position.set(x * 1.35, 1.05, 0.52);
+            this.characterContainer.add(blush);
+          });
+
+          // Mouth cavity backing (深色口腔底襯)
+          const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.22, 0.12), mouthMat);
+          mouth.position.set(0, 0.88, 0.52);
+          this.characterContainer.add(mouth);
+
+          // PROMINENT BUCK TEETH (麥塊風格超可愛醒目潔白體素大暴牙!)
+          [-0.06, 0.06].forEach(x => {
+            const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.21, 0.07), teethMat);
+            tooth.position.set(x, 0.86, 0.60);
+            this.characterContainer.add(tooth);
+          });
+
+          // Pink strawberry nose block
+          const nose = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.10, 0.08), noseMat);
+          nose.position.set(0, 1.05, 0.60);
+          this.characterContainer.add(nose);
+
+          // Sparkling anime pixel eyes
+          [-0.20, 0.20].forEach(x => {
+            const eye = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.04), eyeMat);
+            eye.position.set(x, 1.25, 0.52);
+            this.characterContainer.add(eye);
+
+            const shine1 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.05), teethMat);
+            shine1.position.set(x + (x > 0 ? 0.02 : -0.02), 1.28, 0.54);
+            this.characterContainer.add(shine1);
+          });
+
+          // TALL MINECRAFT RABBIT EARS (超長立體體素兔耳 - 放置於負 Z，確保身處標籤背後!)
+          [-0.28, 0.28].forEach(x => {
+            const ear = new THREE.Mesh(new THREE.BoxGeometry(0.20, 1.10, 0.18), whiteMat);
+            ear.position.set(x, 2.05, -0.22); // Placed BEHIND the overhead billboard label!
+            this.characterContainer.add(ear);
+            this.registerTintable(ear);
+
+            const innerEar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.85, 0.05), innerEarMat);
+            innerEar.position.set(x, 2.05, -0.14);
+            this.characterContainer.add(innerEar);
+          });
+
+          // Snow-white front paws resting on curb with pink pads
+          [-0.48, 0.48].forEach(x => {
+            const paw = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.26), whiteMat);
+            paw.position.set(x, 0.35, 0.50);
+            this.characterContainer.add(paw);
+            this.registerTintable(paw);
+
+            const pad = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.12), pawPadMat);
+            pad.position.set(x, 0.43, 0.54);
+            this.characterContainer.add(pad);
+          });
+        }
+
+        buildBillboardBadge() {
+          // Dynamic 2D Canvas for crisp text rendering
+          this.canvas = document.createElement('canvas');
+          this.canvas.width = 320;
+          this.canvas.height = 140;
+          this.ctx = this.canvas.getContext('2d');
+
+          this.texture = new THREE.CanvasTexture(this.canvas);
+          if (typeof THREE.SRGBColorSpace !== 'undefined') {
+            this.texture.colorSpace = THREE.SRGBColorSpace;
+          } else if (typeof THREE.sRGBEncoding !== 'undefined') {
+            this.texture.encoding = THREE.sRGBEncoding;
+          }
+          this.texture.minFilter = THREE.LinearFilter;
+
+          const spriteMat = new THREE.SpriteMaterial({
+            map: this.texture,
+            transparent: true,
+            depthTest: true,
+            depthWrite: false
+          });
+
+          this.billboardSprite = new THREE.Sprite(spriteMat);
+          this.billboardSprite.scale.set(2.4, 1.05, 1);
+          this.billboardSprite.position.set(0, 1.85, 0.35);
+          this.billboardSprite.renderOrder = 100; // Always render overhead label in front cleanly
+          this.billboardSprite.visible = false; // Hidden by default, never shown at hole opening!
+          this.moleGroup.add(this.billboardSprite);
+        }
+
+        buildTargetRing() {
+          // Voxel Square Target Lock Frame (Floats cleanly at y = 0.36, 8cm above the 0.28m curb rim)
+          const frameGroup = new THREE.Group();
+          frameGroup.visible = false; // Hidden when not locked
+          const frameMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            transparent: true,
+            opacity: 0.9,
+            depthWrite: false
+          });
+
+          const barFBGeo = new THREE.BoxGeometry(1.86, 0.06, 0.08);
+          const barLRGeo = new THREE.BoxGeometry(0.08, 0.06, 1.86);
+
+          const barF = new THREE.Mesh(barFBGeo, frameMat);
+          barF.position.set(0, 0.36, 0.90);
+          frameGroup.add(barF);
+
+          const barB = new THREE.Mesh(barFBGeo, frameMat);
+          barB.position.set(0, 0.36, -0.90);
+          frameGroup.add(barB);
+
+          const barL = new THREE.Mesh(barLRGeo, frameMat);
+          barL.position.set(-0.90, 0.36, 0);
+          frameGroup.add(barL);
+
+          const barR = new THREE.Mesh(barLRGeo, frameMat);
+          barR.position.set(0.90, 0.36, 0);
+          frameGroup.add(barR);
+
+          this.targetRing = frameGroup;
+          this.targetRingMaterial = frameMat;
+          this.rootGroup.add(frameGroup);
+        }
+
+        updateBillboardCanvas() {
+          const ctx = this.ctx;
+          const w = this.canvas.width;
+          const h = this.canvas.height;
+
+          ctx.clearRect(0, 0, w, h);
+
+          // Background Rounded Card (Exact 50% opacity translucent badge)
+          const r = 24;
+          const pad = 10;
+          const cardX = pad;
+          const cardY = pad;
+          const cardW = w - pad * 2;
+          const cardH = h - pad * 2;
+
+          ctx.beginPath();
+          drawRoundedRect(ctx, cardX, cardY, cardW, cardH, r);
+
+          if (this.isLocked) {
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.50)'; // 50% opacity
+            ctx.fill();
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = '#38bdf8'; // glowing cyan
+            ctx.stroke();
+          } else {
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.50)'; // 50% opacity
+            ctx.fill();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.50)';
+            ctx.stroke();
+          }
+
+          // Remaining stay time bar
+          if (this.state === 'UP' || this.state === 'RISING') {
+            const pct = Math.max(0, Math.min(1, 1 - (this.stateTimer / this.stayDuration)));
+            const barY = cardY + cardH - 12;
+            const barW = (cardW - 32) * pct;
+
+            ctx.fillStyle = 'rgba(30, 41, 59, 0.50)';
+            ctx.fillRect(cardX + 16, barY, cardW - 32, 6);
+
+            ctx.fillStyle = pct < 0.3 ? '#ef4444' : (this.isLocked ? '#38bdf8' : '#22c55e');
+            ctx.fillRect(cardX + 16, barY, barW, 6);
+          }
+
+          // Render Word Characters with Match Highlighting and Drop Shadow for ultra clarity over 50% opacity
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // Set text drop shadow for crisp readability against 3D scene
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+          ctx.shadowBlur = 6;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 2;
+
+          const word = this.targetWord || '';
+          const isChinese = /[\u4e00-\u9fa5]/.test(word);
+
+          if (isChinese) {
+            ctx.font = 'bold 50px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+            const totalChars = word.length;
+            const charSpacing = 48;
+            const startX = w / 2 - ((totalChars - 1) * charSpacing) / 2;
+            const textY = h / 2 - 4;
+
+            for (let i = 0; i < totalChars; i++) {
+              const char = word[i];
+              const cx = startX + i * charSpacing;
+              if (i < this.typedCount) {
+                ctx.fillStyle = '#10b981'; // emerald green
+              } else if (i === this.typedCount && this.isLocked) {
+                ctx.fillStyle = '#f59e0b'; // amber
+              } else {
+                ctx.fillStyle = '#ffffff';
+              }
+              ctx.fillText(char, cx, textY);
+            }
+          } else {
+            // English: Check if Single Letter mode (with touch typing finger guidance)
+            const isSingleLetter = (word.length === 1);
+            const upperChar = word.toUpperCase();
+            const fingerInfo = isSingleLetter ? KEYBOARD_FINGER_MAP[upperChar] : null;
+
+            if (isSingleLetter && fingerInfo) {
+              // 1. Draw large letter
+              ctx.font = 'bold 52px "JetBrains Mono", Consolas, monospace';
+              if (this.typedCount > 0) {
+                ctx.fillStyle = '#10b981'; // typed
+              } else if (this.isLocked) {
+                ctx.fillStyle = '#f59e0b'; // locked target
+              } else {
+                ctx.fillStyle = '#ffffff';
+              }
+              ctx.fillText(word, w / 2, h / 2 - 16);
+
+              // Clear shadow before drawing pill badge
+              ctx.shadowColor = 'transparent';
+              ctx.shadowBlur = 0;
+              ctx.shadowOffsetX = 0;
+              ctx.shadowOffsetY = 0;
+
+              // 2. Draw Finger Guidance Pill Badge below letter (also 50% opacity)
+              const badgeY = h / 2 + 25;
+              const badgeH = 26;
+              const badgeText = fingerInfo.isAnchor 
+                ? `👉 ${fingerInfo.name} · 定位鍵` 
+                : `👉 ${fingerInfo.name}`;
+              ctx.font = 'bold 15px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+              const textWidth = ctx.measureText(badgeText).width;
+              const badgeW = textWidth + 24;
+              const badgeX = w / 2 - badgeW / 2;
+
+              // Pill background (50% translucent)
+              ctx.beginPath();
+              drawRoundedRect(ctx, badgeX, badgeY - badgeH / 2, badgeW, badgeH, 13);
+              ctx.fillStyle = 'rgba(15, 23, 42, 0.50)';
+              ctx.fill();
+              ctx.lineWidth = 2;
+              ctx.strokeStyle = fingerInfo.color;
+              ctx.stroke();
+
+              // Pill text with subtle shadow
+              ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+              ctx.shadowBlur = 4;
+              ctx.fillStyle = fingerInfo.color;
+              ctx.fillText(badgeText, w / 2, badgeY);
+            } else {
+              // Multi-letter word
+              const fontSize = word.length > 5 ? 40 : 48;
+              ctx.font = `bold ${fontSize}px "JetBrains Mono", Consolas, monospace`;
+
+              // Measure characters for precise coloring
+              let totalWidth = 0;
+              const charWidths = [];
+              for (let i = 0; i < word.length; i++) {
+                const cw = ctx.measureText(word[i]).width;
+                charWidths.push(cw);
+                totalWidth += cw;
+              }
+
+              let currentX = w / 2 - totalWidth / 2;
+              const textY = h / 2 - 4;
+
+              for (let i = 0; i < word.length; i++) {
+                const ch = word[i];
+                const cw = charWidths[i];
+                const drawX = currentX + cw / 2;
+
+                if (i < this.typedCount) {
+                  ctx.fillStyle = '#10b981'; // typed & correct
+                } else if (i === this.typedCount && this.isLocked) {
+                  ctx.fillStyle = '#f59e0b'; // current expected letter
+                  ctx.fillRect(drawX - cw * 0.4, textY + fontSize * 0.45, cw * 0.8, 3);
+                } else {
+                  ctx.fillStyle = '#ffffff'; // remaining
+                }
+                ctx.fillText(ch, drawX, textY);
+                currentX += cw;
+              }
+            }
+          }
+
+          // Reset shadows
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+
+          this.texture.needsUpdate = true;
+        }
+
+        spawn(word, stayDuration) {
+          this.targetWord = word;
+          this.stayDuration = stayDuration;
+          this.state = 'RISING';
+          this.stateTimer = 0;
+          this.typedCount = 0;
+          this.currentY = 0.04;
+          this.moleGroup.position.y = 0.04;
+          this.moleGroup.scale.set(0.70, 0.05, 0.70);
+          this.moleGroup.visible = true;
+          this.setMoleMaterial(false);
+          this.setLocked(false);
+          this.billboardSprite.visible = true;
+          this.updateBillboardCanvas();
+        }
+
+        setLocked(locked) {
+          this.isLocked = locked;
+          if (this.targetRing) {
+            this.targetRing.visible = locked;
+          }
+          if (this.billboardSprite.visible) {
+            this.updateBillboardCanvas();
+          }
+        }
+
+        setMoleMaterial(isHit) {
+          if (this.tintableMeshes) {
+            for (let i = 0; i < this.tintableMeshes.length; i++) {
+              this.tintableMeshes[i].material = isHit ? this.hitMaterial : this.originalMaterials[i];
+            }
+          }
+        }
+
+        hit() {
+          this.state = 'HIT';
+          this.stateTimer = 0;
+          this.setMoleMaterial(true);
+          this.setLocked(false);
+          this.billboardSprite.visible = false; // Immediately hide label on hit
+          // Visual squash
+          this.moleGroup.scale.set(1.25, 0.55, 1.25);
+          spawnParticles(this.posX, 0.9, this.posZ);
+        }
+
+        escape() {
+          this.state = 'FALLING';
+          this.stateTimer = 0;
+          this.setLocked(false);
+          this.billboardSprite.visible = false; // Immediately hide label when retreating into hole
+        }
+
+        reset() {
+          this.state = 'HIDDEN';
+          this.stateTimer = 0;
+          this.targetWord = '';
+          this.typedCount = 0;
+          this.currentY = 0.04;
+          this.moleGroup.position.y = 0.04;
+          this.moleGroup.scale.set(1, 0.05, 1);
+          this.moleGroup.visible = false;
+          this.billboardSprite.visible = false;
+          this.setLocked(false);
+          this.setMoleMaterial(false);
+        }
+
+        showAsMenuMascot(label = '') {
+          this.state = 'MENU_MASCOT';
+          this.stateTimer = 0;
+          this.currentY = 0.95;
+          this.moleGroup.position.y = 0.95;
+          this.moleGroup.scale.set(1, 1, 1);
+          this.moleGroup.visible = true;
+          this.targetWord = label;
+          this.typedCount = 0;
+          this.setLocked(false);
+          this.setMoleMaterial(false);
+          this.billboardSprite.visible = Boolean(label);
+          if (label) this.updateBillboardCanvas();
+        }
+
+        update(dt) {
+          this.stateTimer += dt;
+
+          if (this.state === 'MENU_MASCOT') {
+            this.moleGroup.visible = true;
+            this.moleGroup.scale.set(1, 1, 1);
+            this.moleGroup.position.y = 0.95 + Math.sin(this.stateTimer * 3.5) * 0.04;
+            if (this.billboardSprite && this.targetWord) this.billboardSprite.visible = true;
+            return null;
+          } else if (this.state === 'RISING') {
+            const progress = Math.min(this.stateTimer / 0.32, 1);
+            // Ease out back for responsive, bouncy Minecraft pop-up
+            const c1 = 1.70158;
+            const c3 = c1 + 1;
+            const eased = 1 + c3 * Math.pow(progress - 1, 3) + c1 * Math.pow(progress - 1, 2);
+            this.currentY = 0.04 + (0.95 - 0.04) * Math.min(eased, 1.05);
+            this.moleGroup.position.y = this.currentY;
+
+            const sy = Math.min(0.05 + 0.95 * Math.min(eased, 1.0), 1.05);
+            const sxz = Math.min(0.70 + 0.30 * Math.min(eased, 1.0), 1.05);
+            this.moleGroup.scale.set(sxz, sy, sxz);
+            this.moleGroup.visible = true;
+            this.billboardSprite.visible = true;
+
+            if (progress >= 1) {
+              this.state = 'UP';
+              this.stateTimer = 0;
+              this.currentY = 0.95;
+              this.moleGroup.position.y = 0.95;
+              this.moleGroup.scale.set(1, 1, 1);
+            }
+            this.updateBillboardCanvas();
+          } else if (this.state === 'UP') {
+            // Idle bobbing atop the curb
+            this.moleGroup.visible = true;
+            this.moleGroup.scale.set(1, 1, 1);
+            this.moleGroup.position.y = 0.95 + Math.sin(this.stateTimer * 4) * 0.04;
+            this.billboardSprite.visible = true;
+
+            // Timer update on billboard every few frames
+            this.updateBillboardCanvas();
+
+            if (this.stateTimer >= this.stayDuration) {
+              this.escape();
+              return 'ESCAPED';
+            }
+          } else if (this.state === 'FALLING') {
+            this.billboardSprite.visible = false;
+            const progress = Math.min(this.stateTimer / 0.25, 1);
+            this.currentY = 0.95 - (0.95 - 0.04) * progress;
+            this.moleGroup.position.y = this.currentY;
+            const sy = Math.max(0.05, 1.0 - 0.95 * progress);
+            const sxz = Math.max(0.65, 1.0 - 0.35 * progress);
+            this.moleGroup.scale.set(sxz, sy, sxz);
+            if (progress >= 1) {
+              this.state = 'HIDDEN';
+              this.currentY = 0.04;
+              this.moleGroup.position.y = 0.04;
+              this.moleGroup.scale.set(1, 0.05, 1);
+              this.moleGroup.visible = false;
+              this.setMoleMaterial(false);
+            }
+          } else if (this.state === 'HIT') {
+            this.billboardSprite.visible = false;
+            const progress = Math.min(this.stateTimer / 0.28, 1);
+            this.currentY = 0.95 - (0.95 - 0.04) * progress;
+            this.moleGroup.position.y = this.currentY;
+            const sy = Math.max(0.05, (1 - progress) * 0.55);
+            const sxz = Math.max(0.65, 1.25 * (1 - progress * 0.45));
+            this.moleGroup.scale.set(sxz, sy, sxz);
+            if (progress >= 1) {
+              this.state = 'HIDDEN';
+              this.currentY = 0.04;
+              this.moleGroup.position.y = 0.04;
+              this.moleGroup.scale.set(1, 0.05, 1);
+              this.moleGroup.visible = false;
+              this.setMoleMaterial(false);
+            }
+          } else {
+            // HIDDEN
+            this.moleGroup.visible = false;
+            this.billboardSprite.visible = false;
+          }
+
+          // Animate Target Ring if locked (Square Voxel frame rotating on Y)
+          if (this.isLocked && this.targetRing) {
+            this.targetRing.rotation.y += dt * 2.5;
+          }
+
+          return null;
+        }
+      }
+
+      /* Create 3x3 Grid of Mole Holes */
+      const moleHoles = [];
+      const SPACING = 2.6;
+      let moleIndex = 0;
+      for (let row = -1; row <= 1; row++) {
+        for (let col = -1; col <= 1; col++) {
+          const px = col * SPACING;
+          const pz = row * SPACING;
+          moleHoles.push(new MoleHole(moleIndex++, col, row, px, pz));
+        }
+      }
+
+      /* Dynamic Theme & Scene Color Controller */
+      function applyTheme(difficultyKey) {
+        const theme = THEMES[difficultyKey] || THEMES.easy;
+
+        // 1. Scene Background & Fog
+        scene.background.setHex(theme.bgColor);
+        scene.fog.color.setHex(theme.fogColor);
+
+        // 2. Island & Soil
+        islandMesh.material.color.setHex(theme.islandColor);
+        soilMesh.material.color.setHex(theme.soilColor);
+
+        // 3. Lighting Rig
+        ambientLight.color.setHex(theme.ambientSky);
+        ambientLight.groundColor.setHex(theme.ambientGround);
+        sunLight.color.setHex(theme.sunColor);
+        rimLight.color.setHex(theme.rimColor);
+
+        // 4. Fence & Mushrooms
+        for (const post of fenceMeshes) {
+          post.material.color.setHex(theme.fenceColor);
+        }
+        for (const cap of mushroomCaps) {
+          cap.material.color.setHex(theme.mushCapColor);
+        }
+
+        // 5. Update All 9 Holes & Characters
+        for (let i = 0; i < moleHoles.length; i++) {
+          const hole = moleHoles[i];
+          if (hole.moundMaterial) {
+            hole.moundMaterial.color.setHex(theme.moundColor);
+          } else if (hole.moundMesh && hole.moundMesh.material) {
+            hole.moundMesh.material.color.setHex(theme.moundColor);
+          }
+          hole.setCharacterType(theme.characterType);
+        }
+
+        // In MENU state, show the cute mascot in the center hole (index 4) so the 3D scene is alive!
+        if (gameState === 'MENU' && moleHoles && moleHoles.length > 4) {
+          for (let i = 0; i < moleHoles.length; i++) {
+            if (i === 4) {
+              moleHoles[i].showAsMenuMascot(theme.icon + ' ' + theme.characterTitle);
+            } else {
+              moleHoles[i].reset();
+            }
+          }
+        }
+
+        // 6. Update Particle Colors
+        for (let i = 0; i < particles.length; i++) {
+          particles[i].mesh.material.color.setHex(theme.particleColors[i % theme.particleColors.length]);
+        }
+
+        // 7. Update Modal Branding
+        const modalIcon = document.getElementById('modal-character-icon');
+        const modalSubtext = document.getElementById('modal-character-subtext');
+        if (modalIcon) modalIcon.textContent = theme.icon;
+        if (modalSubtext) modalSubtext.textContent = `${theme.characterTitle}登場 · ${theme.name}`;
+
+        // 8. Update HUD
+        updateModeBadgeHUD();
+      }
+
+      /* -------------------------------------------------------------
+       * 7. GAME STATE & SETTINGS MANAGEMENT
+       * ------------------------------------------------------------- */
+      const config = {
+        lang: 'en', // 'en' | 'zh'
+        enMode: 'letters', // 'letters' | 'words'
+        fingerSet: 'home', // 'home' | 'index' | 'middle_ring' | 'pinky' | 'left_hand' | 'right_hand' | 'top_row' | 'bottom_row' | 'all'
+        caseMode: 'lower', // 'lower' | 'upper' | 'mixed'
+        difficulty: 'easy', // 'easy' | 'medium' | 'hard'
+        duration: 60, // 60, 90, 0 (endless/survival)
+        showKeyboard: true // toggleable visual on-screen keyboard
+      };
+
+      const difficultySettings = {
+        easy: { stayDuration: 5.0, maxActive: 1, spawnInterval: 1.2 },
+        medium: { stayDuration: 3.5, maxActive: 2, spawnInterval: 0.8 },
+        hard: { stayDuration: 2.0, maxActive: 3, spawnInterval: 0.5 }
+      };
+
+      let gameState = 'MENU'; // 'MENU', 'PLAYING', 'PAUSED', 'GAMEOVER'
+      let gameTimer = 60;
+      let elapsedTotalTime = 0;
+      let hp = 5;
+      let score = 0;
+      let combo = 0;
+      let maxCombo = 0;
+      let totalKeysTyped = 0;
+      let correctKeysTyped = 0;
+      let missCount = 0;
+      let molesWhacked = 0;
+      let spawnCooldown = 0;
+      let activeLockedMole = null;
+
+      /* -------------------------------------------------------------
+       * 8. WORD GENERATOR HELPERS
+       * ------------------------------------------------------------- */
+      function getRandomEnglishLetter() {
+        const setConfig = FINGER_SETS[config.fingerSet] || FINGER_SETS.home;
+        const pool = setConfig.chars;
+        const char = pool[Math.floor(Math.random() * pool.length)];
+        if (config.caseMode === 'lower') return char.toLowerCase();
+        if (config.caseMode === 'upper') return char.toUpperCase();
+        return Math.random() > 0.5 ? char.toUpperCase() : char.toLowerCase();
+      }
+
+      function getRandomEnglishWord() {
+        const raw = VOCAB_EN_WORDS[Math.floor(Math.random() * VOCAB_EN_WORDS.length)];
+        if (config.caseMode === 'lower') return raw.toLowerCase();
+        if (config.caseMode === 'upper') return raw.toUpperCase();
+        if (config.caseMode === 'mixed') {
+          // Capitalize first or alternating
+          return raw.split('').map((c, i) => i % 2 === 0 ? c.toUpperCase() : c.toLowerCase()).join('');
+        }
+        return raw;
+      }
+
+      function getRandomChineseWord() {
+        return VOCAB_ZH_WORDS[Math.floor(Math.random() * VOCAB_ZH_WORDS.length)];
+      }
+
+      function generateNextTargetWord() {
+        if (config.lang === 'zh') {
+          return getRandomChineseWord();
+        } else {
+          return config.enMode === 'letters' ? getRandomEnglishLetter() : getRandomEnglishWord();
+        }
+      }
+
+      /* -------------------------------------------------------------
+       * 9. SPAWN & ROUND CONTROLLER
+       * ------------------------------------------------------------- */
+      function checkAndSpawnMoles(dt) {
+        if (gameState !== 'PLAYING') return;
+
+        spawnCooldown -= dt;
+        const diff = difficultySettings[config.difficulty];
+        const activeMoles = moleHoles.filter(h => h.state !== 'HIDDEN' && h.state !== 'FALLING' && h.state !== 'HIT');
+
+        if (activeMoles.length < diff.maxActive && spawnCooldown <= 0) {
+          const availableHoles = moleHoles.filter(h => h.state === 'HIDDEN');
+          if (availableHoles.length > 0) {
+            const chosen = availableHoles[Math.floor(Math.random() * availableHoles.length)];
+            const word = generateNextTargetWord();
+            chosen.spawn(word, diff.stayDuration);
+            spawnCooldown = diff.spawnInterval;
+          }
+        }
+      }
+
+      /* -------------------------------------------------------------
+       * 10. TYPING LOGIC, VIRTUAL TOUCH KEYBOARD & TARGET LOCKING
+       * ------------------------------------------------------------- */
+      const imeInput = document.getElementById('ime-input');
+      const typingDisplayContent = document.getElementById('typing-display-content');
+      const typingStatusHint = document.getElementById('typing-status-hint');
+      const chineseCompBar = document.getElementById('chinese-composition-bar');
+      const chineseCompText = document.getElementById('chinese-composition-text');
+
+      const VK_ROWS = [
+        ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+        ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+        ['Z', 'X', 'C', 'V', 'B', 'N', 'M']
+      ];
+
+      function initVirtualKeyboard() {
+        for (let r = 0; r < 3; r++) {
+          const rowEl = document.getElementById(`vk-row-${r + 1}`);
+          if (!rowEl) continue;
+          rowEl.innerHTML = '';
+          const letters = VK_ROWS[r];
+          for (const char of letters) {
+            const info = KEYBOARD_FINGER_MAP[char] || { color: '#94a3b8', isAnchor: false };
+            const keyEl = document.createElement('div');
+            keyEl.id = `vk-key-${char}`;
+            keyEl.className = `vk-key w-7 h-8 sm:w-8 sm:h-9 text-xs sm:text-sm font-mono font-bold rounded-lg flex flex-col items-center justify-center relative cursor-pointer border bg-slate-800/90 text-slate-200 border-slate-700/80 shadow-sm transition-all`;
+            
+            keyEl.innerHTML = `
+              <span class="leading-none">${char}</span>
+              ${info.isAnchor ? '<span class="text-[10px] -mt-1 font-black text-amber-400 font-sans leading-none">_</span>' : `<span class="w-1.5 h-1.5 rounded-full mt-0.5" style="background-color: ${info.color}"></span>`}
+            `;
+
+            keyEl.addEventListener('click', () => {
+              if (gameState === 'PLAYING') {
+                imeInput.focus();
+                const charToSend = config.caseMode === 'upper' ? char : char.toLowerCase();
+                const evt = new KeyboardEvent('keydown', { key: charToSend, bubbles: true });
+                imeInput.dispatchEvent(evt);
+              }
+            });
+
+            rowEl.appendChild(keyEl);
+          }
+        }
+      }
+
+      function updateVirtualKeyboard(activeChar) {
+        const vkDock = document.getElementById('virtual-keyboard-dock');
+        if (!vkDock) return;
+
+        // Only active for English Single Letter Mode
+        if (config.lang !== 'en' || config.enMode !== 'letters') {
+          vkDock.classList.add('hidden');
+          return;
+        }
+
+        vkDock.classList.remove('hidden');
+
+        const keysContainer = document.getElementById('vk-keys-container');
+        const legend = document.getElementById('vk-legend');
+        const toggleBtn = document.getElementById('btn-toggle-keyboard');
+
+        if (!config.showKeyboard) {
+          if (keysContainer) keysContainer.classList.add('hidden');
+          if (legend) legend.classList.add('hidden');
+          if (toggleBtn) toggleBtn.textContent = '⌨️ 展開指法鍵盤';
+        } else {
+          if (keysContainer) keysContainer.classList.remove('hidden');
+          if (legend) legend.classList.remove('hidden');
+          if (toggleBtn) toggleBtn.textContent = '⌨️ 隱藏指法鍵盤';
+        }
+
+        // Reset previous highlights
+        document.querySelectorAll('.vk-key').forEach(el => {
+          el.classList.remove('vk-key-target');
+          el.style.borderColor = '';
+          el.style.backgroundColor = '';
+          el.style.color = '';
+        });
+
+        const guideBadge = document.getElementById('vk-finger-badge');
+        const guideText = document.getElementById('vk-guide-text');
+
+        if (!activeChar) {
+          const setName = FINGER_SETS[config.fingerSet]?.name || '基準鍵';
+          if (guideBadge) {
+            guideBadge.textContent = `🎯 ${setName}`;
+            guideBadge.className = 'px-2 py-0.5 rounded-md font-bold text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+            guideBadge.style.color = '';
+            guideBadge.style.borderColor = '';
+            guideBadge.style.backgroundColor = '';
+          }
+          if (guideText) {
+            guideText.textContent = '雙手自然置於基準鍵位 (F與J有凸點)，等待地鼠冒出';
+          }
+          return;
+        }
+
+        const upper = activeChar.toUpperCase();
+        const info = KEYBOARD_FINGER_MAP[upper];
+        const keyEl = document.getElementById(`vk-key-${upper}`);
+
+        if (info && keyEl) {
+          keyEl.classList.add('vk-key-target');
+          keyEl.style.borderColor = info.color;
+          keyEl.style.color = info.color;
+          keyEl.style.backgroundColor = `${info.color}25`;
+
+          if (guideBadge) {
+            guideBadge.textContent = `${info.name} ➔「${upper}」${info.isAnchor ? ' (定位鍵)' : ''}`;
+            guideBadge.style.color = info.color;
+            guideBadge.style.borderColor = info.color;
+            guideBadge.style.backgroundColor = `${info.color}20`;
+          }
+          if (guideText) {
+            guideText.textContent = info.isAnchor
+              ? `使用【${info.name}】敲擊基準定位鍵「${upper}」(有凸起突點)`
+              : `使用【${info.name}】敲擊鍵盤「${upper}」鍵`;
+          }
+        }
+      }
+
+      function focusIMEInput() {
+        if (gameState === 'PLAYING') {
+          imeInput.focus();
+        }
+      }
+
+      window.addEventListener('click', focusIMEInput);
+
+      function updateTypingHUD() {
+        if (!activeLockedMole || activeLockedMole.state === 'HIDDEN' || activeLockedMole.state === 'HIT' || activeLockedMole.state === 'FALLING') {
+          activeLockedMole = null;
+          typingDisplayContent.innerHTML = `<span class="text-slate-500 text-sm font-normal">等待敲鍵鎖定目標...</span><span class="typing-cursor"></span>`;
+          typingStatusHint.textContent = config.lang === 'zh' ? '輸入中文詞彙並送出以擊打地鼠' : '敲擊目標地鼠的第一個字母';
+
+          // Guide beginner to first active mole's target letter if any
+          const activeMoles = moleHoles.filter(h => h.state === 'UP' || h.state === 'RISING');
+          if (activeMoles.length > 0 && config.lang === 'en' && config.enMode === 'letters') {
+            updateVirtualKeyboard(activeMoles[0].targetWord[0]);
+          } else {
+            updateVirtualKeyboard(null);
+          }
+          return;
+        }
+
+        const word = activeLockedMole.targetWord;
+        const typedIdx = activeLockedMole.typedCount;
+
+        if (config.lang === 'zh') {
+          // Chinese display
+          let html = '';
+          for (let i = 0; i < word.length; i++) {
+            if (i < typedIdx) {
+              html += `<span class="text-emerald-400 font-bold underline px-0.5">${word[i]}</span>`;
+            } else {
+              html += `<span class="text-white font-bold px-0.5">${word[i]}</span>`;
+            }
+          }
+          html += `<span class="typing-cursor ml-1"></span>`;
+          typingDisplayContent.innerHTML = html;
+          typingStatusHint.textContent = `鎖定目標: ${word} (按 Enter 送出)`;
+          updateVirtualKeyboard(null);
+        } else {
+          // English display
+          let html = '';
+          for (let i = 0; i < word.length; i++) {
+            if (i < typedIdx) {
+              html += `<span class="text-emerald-400 font-bold px-0.5">${word[i]}</span>`;
+            } else if (i === typedIdx) {
+              html += `<span class="text-amber-400 font-bold underline px-0.5">${word[i]}</span>`;
+            } else {
+              html += `<span class="text-white font-bold px-0.5">${word[i]}</span>`;
+            }
+          }
+          html += `<span class="typing-cursor ml-1"></span>`;
+          typingDisplayContent.innerHTML = html;
+          typingStatusHint.textContent = `鎖定目標: "${word}"`;
+
+          // Guide next character on virtual keyboard
+          const nextChar = word[typedIdx] || null;
+          updateVirtualKeyboard(nextChar);
+        }
+      }
+
+      function handleCorrectHit(mole) {
+        molesWhacked++;
+        combo++;
+        if (combo > maxCombo) maxCombo = combo;
+
+        // Base points + combo multiplier
+        const wordLen = mole.targetWord.length;
+        const comboBonus = Math.min(combo * 10, 200);
+        const points = (wordLen * 20) + comboBonus;
+        score += points;
+
+        sound.playWhack();
+        if (combo > 1) {
+          sound.playCombo(combo);
+        }
+
+        triggerHammerStrike(mole.posX, mole.posZ);
+        mole.hit();
+        showFloatingHit(`+${points} ${combo > 2 ? '🔥 COMBO x' + combo : ''}`, mole.posX, mole.posZ);
+
+        activeLockedMole = null;
+        updateStatsHUD();
+        updateTypingHUD();
+      }
+
+      function handleMistake() {
+        missCount++;
+        sound.playMiss();
+        updateStatsHUD();
+
+        // Shake visual box
+        const box = document.getElementById('typing-display-box');
+        box.classList.add('border-rose-500');
+        setTimeout(() => box.classList.remove('border-rose-500'), 200);
+      }
+
+      function showFloatingHit(text, x, z) {
+        const container = document.getElementById('hit-feedback-container');
+        const badge = document.createElement('div');
+        badge.className = 'text-xl font-black text-amber-400 bg-slate-900/90 border border-amber-500/50 px-4 py-1.5 rounded-full shadow-2xl animate-bounce';
+        badge.textContent = text;
+        container.innerHTML = '';
+        container.appendChild(badge);
+        setTimeout(() => {
+          if (container.contains(badge)) container.removeChild(badge);
+        }, 1200);
+      }
+
+      function flashDamageVignette() {
+        const el = document.getElementById('damage-flash');
+        el.style.opacity = '1';
+        setTimeout(() => {
+          el.style.opacity = '0';
+        }, 300);
+      }
+
+      // Chinese IME Event Handlers
+      let isComposing = false;
+
+      imeInput.addEventListener('compositionstart', () => {
+        isComposing = true;
+        chineseCompBar.classList.remove('hidden');
+      });
+
+      imeInput.addEventListener('compositionupdate', (e) => {
+        isComposing = true;
+        chineseCompText.textContent = e.data || '';
+      });
+
+      imeInput.addEventListener('compositionend', (e) => {
+        isComposing = false;
+        chineseCompBar.classList.add('hidden');
+        chineseCompText.textContent = '';
+        // If Chinese mode, evaluate committed string
+        if (config.lang === 'zh' && e.data) {
+          handleChineseInput(e.data.trim());
+        }
+      });
+
+      imeInput.addEventListener('keydown', (e) => {
+        if (gameState !== 'PLAYING') return;
+
+        // Escape to pause
+        if (e.key === 'Escape') {
+          pauseGame();
+          return;
+        }
+
+        if (config.lang === 'zh') {
+          if (e.key === 'Enter' && !isComposing) {
+            const val = imeInput.value.trim();
+            if (val) {
+              handleChineseInput(val);
+              imeInput.value = '';
+            }
+          }
+          return;
+        }
+
+        // English Mode Key handling
+        if (config.lang === 'en') {
+          // Ignore control keys
+          if (e.ctrlKey || e.altKey || e.metaKey || e.key.length !== 1) return;
+
+          totalKeysTyped++;
+          const pressedChar = e.key;
+
+          // Virtual Keyboard press animation
+          const pressedUpper = pressedChar.toUpperCase();
+          const pressedKeyEl = document.getElementById(`vk-key-${pressedUpper}`);
+          if (pressedKeyEl) {
+            pressedKeyEl.classList.add('vk-key-pressed');
+            setTimeout(() => pressedKeyEl.classList.remove('vk-key-pressed'), 100);
+          }
+
+          const activeMoles = moleHoles.filter(h => h.state === 'UP' || h.state === 'RISING');
+
+          // If no mole currently locked, attempt to lock onto a mole starting with this character
+          if (!activeLockedMole || activeLockedMole.state === 'HIDDEN' || activeLockedMole.state === 'FALLING') {
+            const match = activeMoles.find(m => {
+              const expected = m.targetWord[0];
+              return matchChar(pressedChar, expected);
+            });
+
+            if (match) {
+              activeLockedMole = match;
+              moleHoles.forEach(h => h.setLocked(h === activeLockedMole));
+              activeLockedMole.typedCount = 1;
+              correctKeysTyped++;
+              sound.playKeyClick();
+              activeLockedMole.updateBillboardCanvas();
+              updateTypingHUD();
+
+              if (activeLockedMole.typedCount >= activeLockedMole.targetWord.length) {
+                handleCorrectHit(activeLockedMole);
+              }
+            } else {
+              handleMistake();
+            }
+          } else {
+            // Already locked onto a mole
+            const expected = activeLockedMole.targetWord[activeLockedMole.typedCount];
+            if (matchChar(pressedChar, expected)) {
+              activeLockedMole.typedCount++;
+              correctKeysTyped++;
+              sound.playKeyClick();
+              activeLockedMole.updateBillboardCanvas();
+              updateTypingHUD();
+
+              if (activeLockedMole.typedCount >= activeLockedMole.targetWord.length) {
+                handleCorrectHit(activeLockedMole);
+              }
+            } else {
+              handleMistake();
+            }
+          }
+        }
+      });
+
+      function matchChar(input, target) {
+        if (config.caseMode === 'lower') {
+          return input.toLowerCase() === target.toLowerCase();
+        }
+        if (config.caseMode === 'upper') {
+          return input.toUpperCase() === target.toUpperCase();
+        }
+        return input === target;
+      }
+
+      function handleChineseInput(inputWord) {
+        totalKeysTyped += inputWord.length;
+        const activeMoles = moleHoles.filter(h => h.state === 'UP' || h.state === 'RISING');
+
+        // Look for exact match or prefix match among active moles
+        const exactMatch = activeMoles.find(m => m.targetWord === inputWord);
+        if (exactMatch) {
+          correctKeysTyped += inputWord.length;
+          exactMatch.typedCount = inputWord.length;
+          exactMatch.updateBillboardCanvas();
+          handleCorrectHit(exactMatch);
+          return;
+        }
+
+        // Check if starts with
+        const prefixMatch = activeMoles.find(m => m.targetWord.startsWith(inputWord));
+        if (prefixMatch) {
+          correctKeysTyped += inputWord.length;
+          activeLockedMole = prefixMatch;
+          moleHoles.forEach(h => h.setLocked(h === activeLockedMole));
+          activeLockedMole.typedCount = inputWord.length;
+          activeLockedMole.updateBillboardCanvas();
+          sound.playKeyClick();
+          updateTypingHUD();
+          return;
+        }
+
+        handleMistake();
+      }
+
+      /* -------------------------------------------------------------
+       * 11. HUD STATS & HEARTS DISPLAY
+       * ------------------------------------------------------------- */
+      const hudScore = document.getElementById('hud-score');
+      const hudCombo = document.getElementById('hud-combo');
+      const comboPill = document.getElementById('combo-pill');
+      const heartsContainer = document.getElementById('hearts-container');
+      const gameTimerEl = document.getElementById('game-timer');
+      const hudModeBadge = document.getElementById('hud-mode-badge');
+
+      function updateStatsHUD() {
+        hudScore.textContent = score.toLocaleString();
+        hudCombo.textContent = combo;
+
+        if (combo > 1) {
+          comboPill.classList.remove('hidden');
+          comboPill.classList.add('flex');
+        } else {
+          comboPill.classList.remove('flex');
+          comboPill.classList.add('hidden');
+        }
+
+        // Render Hearts
+        let heartsHtml = '';
+        for (let i = 0; i < 5; i++) {
+          if (i < hp) {
+            heartsHtml += `<span class="heart text-rose-500">❤️</span>`;
+          } else {
+            heartsHtml += `<span class="heart text-slate-700 opacity-40">🖤</span>`;
+          }
+        }
+        heartsContainer.innerHTML = heartsHtml;
+      }
+
+      function updateTimerHUD() {
+        if (config.duration === 0) {
+          // Survival mode: show elapsed time
+          const mins = Math.floor(elapsedTotalTime / 60);
+          const secs = Math.floor(elapsedTotalTime % 60);
+          gameTimerEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        } else {
+          // Countdown
+          const rem = Math.max(0, Math.ceil(gameTimer));
+          const mins = Math.floor(rem / 60);
+          const secs = rem % 60;
+          gameTimerEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+      }
+
+      function updateModeBadgeHUD() {
+        const theme = THEMES[config.difficulty] || THEMES.easy;
+        const diffMap = { easy: '簡單', medium: '中等', hard: '困難' };
+        let modeDetail = '';
+        if (config.lang === 'zh') {
+          modeDetail = '中文';
+        } else if (config.enMode === 'words') {
+          modeDetail = '單詞模式';
+        } else {
+          const setName = FINGER_SETS[config.fingerSet]?.name || '基準鍵';
+          modeDetail = `指法：${setName}`;
+        }
+        hudModeBadge.className = `ml-2 text-xs font-semibold px-2.5 py-0.5 rounded-full border shadow-sm ${theme.badgeClass}`;
+        hudModeBadge.textContent = `${theme.icon} ${theme.characterTitle} · ${diffMap[config.difficulty]} · ${modeDetail}`;
+      }
+
+      /* -------------------------------------------------------------
+       * 12. GAME FLOW: START, PAUSE, GAME OVER, SETTLEMENT, TUTORIAL
+       * ------------------------------------------------------------- */
+      const startModal = document.getElementById('start-modal');
+      const pauseModal = document.getElementById('pause-modal');
+      const gameoverModal = document.getElementById('gameover-modal');
+      const tutorialModal = document.getElementById('tutorial-modal');
+
+      function showModal(modal) {
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+
+      function hideModal(modal) {
+        if (!modal) return;
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+
+      function startGame() {
+        gameState = 'PLAYING';
+        hp = 5;
+        score = 0;
+        combo = 0;
+        maxCombo = 0;
+        totalKeysTyped = 0;
+        correctKeysTyped = 0;
+        missCount = 0;
+        molesWhacked = 0;
+        elapsedTotalTime = 0;
+        gameTimer = config.duration > 0 ? config.duration : 0;
+        spawnCooldown = 0.05;
+        activeLockedMole = null;
+
+        // Reset all holes
+        moleHoles.forEach(h => {
+          h.reset();
+        });
+
+        applyTheme(config.difficulty);
+
+        hideModal(startModal);
+        hideModal(pauseModal);
+        hideModal(gameoverModal);
+        hideModal(tutorialModal);
+
+        updateStatsHUD();
+        updateTimerHUD();
+        updateModeBadgeHUD();
+        updateTypingHUD();
+        updateCanvasSize();
+
+        imeInput.value = '';
+        focusIMEInput();
+      }
+
+      function pauseGame() {
+        if (gameState !== 'PLAYING') return;
+        gameState = 'PAUSED';
+        showModal(pauseModal);
+      }
+
+      function resumeGame() {
+        if (gameState !== 'PAUSED') return;
+        gameState = 'PLAYING';
+        hideModal(pauseModal);
+        focusIMEInput();
+      }
+
+      function triggerGameOver(isVictory) {
+        gameState = 'GAMEOVER';
+        sound.playGameOver();
+
+        // Calculate final stats
+        const totalAttempts = correctKeysTyped + missCount;
+        const accuracy = totalAttempts > 0 ? Math.round((correctKeysTyped / totalAttempts) * 100) : 100;
+        const elapsedMins = Math.max(elapsedTotalTime / 60, 0.1);
+        const wpm = Math.round((correctKeysTyped / 5) / elapsedMins);
+        const cpm = Math.round(correctKeysTyped / elapsedMins);
+
+        // Grade ranking
+        let rank = 'C';
+        let comment = '繼續練習，一定會越打越順手！';
+        let icon = '🌱';
+
+        if (accuracy >= 95 && wpm >= 65) {
+          rank = 'SSS';
+          comment = '神速鍵盤俠！打字又快又準，出神入化！';
+          icon = '👑';
+        } else if (accuracy >= 90 && wpm >= 45) {
+          rank = 'SS';
+          comment = '打字大師！手速驚人，反應神速！';
+          icon = '🏆';
+        } else if (accuracy >= 85 && wpm >= 30) {
+          rank = 'S';
+          comment = '太厲害了！精準打擊，節奏極佳！';
+          icon = '⭐';
+        } else if (accuracy >= 75) {
+          rank = 'A';
+          comment = '表現優異！保持手感，挑戰更高連擊！';
+          icon = '🎯';
+        } else {
+          rank = 'B';
+          comment = '穩紮穩打，多加練習必定大幅進步！';
+          icon = '💪';
+        }
+
+        // Fill settlement modal
+        const theme = THEMES[config.difficulty] || THEMES.easy;
+        document.getElementById('settlement-icon').textContent = theme.icon;
+        document.getElementById('settlement-rank').textContent = `RANK: ${rank}`;
+        document.getElementById('settlement-title').textContent = hp <= 0 ? `${theme.characterTitle} 挑戰結束` : `${theme.characterTitle} 挑戰完成！`;
+        document.getElementById('settlement-comment').textContent = comment;
+
+        document.getElementById('settle-score').textContent = score.toLocaleString();
+        document.getElementById('settle-combo').textContent = maxCombo;
+        document.getElementById('settle-accuracy').textContent = `${accuracy}%`;
+        document.getElementById('settle-wpm').textContent = config.lang === 'zh' ? `${cpm} CPM` : `${wpm} WPM`;
+
+        document.getElementById('settle-moles').textContent = molesWhacked;
+        document.getElementById('settle-keys').textContent = totalKeysTyped;
+        document.getElementById('settle-misses').textContent = missCount;
+
+        // Touch Typing Evaluation Card
+        const settleFingerCard = document.getElementById('settle-finger-card');
+        if (config.lang === 'en' && config.enMode === 'letters') {
+          if (settleFingerCard) {
+            settleFingerCard.classList.remove('hidden');
+            const fingerInfo = FINGER_SETS[config.fingerSet] || FINGER_SETS.home;
+            document.getElementById('settle-finger-name').textContent = `${fingerInfo.name} (${fingerInfo.enName})`;
+            let touchRating = '';
+            if (accuracy >= 95) {
+              touchRating = '🏆 盲打大師！鍵位肌肉記憶已完美成形！';
+            } else if (accuracy >= 85) {
+              touchRating = '🌟 姿勢優秀！正確指法習慣成效卓越！';
+            } else if (accuracy >= 70) {
+              touchRating = '📈 鍵位熟悉中，放鬆手腕並保持正確指位！';
+            } else {
+              touchRating = '🌱 建議練習【基準鍵專練】，放慢打穩再求快！';
+            }
+            document.getElementById('settle-finger-rating').textContent = touchRating;
+          }
+        } else {
+          if (settleFingerCard) settleFingerCard.classList.add('hidden');
+        }
+
+        showModal(gameoverModal);
+      }
+
+      /* -------------------------------------------------------------
+       * 13. UI EVENT LISTENERS & SETTINGS CONTROLLER
+       * ------------------------------------------------------------- */
+      // Language buttons
+      const langBtns = document.querySelectorAll('.lang-opt-btn');
+      const sectionEnMode = document.getElementById('section-en-mode');
+      const sectionFingerMode = document.getElementById('section-finger-mode');
+      const sectionCaseMode = document.getElementById('section-case-mode');
+
+      function syncSettingsVisibility() {
+        if (config.lang === 'en') {
+          if (sectionEnMode) sectionEnMode.classList.remove('hidden');
+          if (sectionCaseMode) sectionCaseMode.classList.remove('hidden');
+          if (sectionFingerMode) {
+            if (config.enMode === 'letters') {
+              sectionFingerMode.classList.remove('hidden');
+            } else {
+              sectionFingerMode.classList.add('hidden');
+            }
+          }
+        } else {
+          if (sectionEnMode) sectionEnMode.classList.add('hidden');
+          if (sectionFingerMode) sectionFingerMode.classList.add('hidden');
+          if (sectionCaseMode) sectionCaseMode.classList.add('hidden');
+        }
+      }
+
+      langBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          langBtns.forEach(b => { b.classList.remove('active-opt'); b.classList.add('inactive-opt'); });
+          btn.classList.add('active-opt');
+          btn.classList.remove('inactive-opt');
+
+          config.lang = btn.getAttribute('data-lang');
+          syncSettingsVisibility();
+          updateModeBadgeHUD();
+        });
+      });
+
+      // English Mode buttons
+      const enModeBtns = document.querySelectorAll('.en-mode-btn');
+      enModeBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          enModeBtns.forEach(b => { b.classList.remove('active-opt'); b.classList.add('inactive-opt'); });
+          btn.classList.add('active-opt');
+          btn.classList.remove('inactive-opt');
+          config.enMode = btn.getAttribute('data-mode');
+          syncSettingsVisibility();
+          updateModeBadgeHUD();
+        });
+      });
+
+      // Finger Mode buttons (Touch typing specific practice sets)
+      const fingerBtns = document.querySelectorAll('.finger-opt-btn');
+      const fingerDescText = document.getElementById('finger-desc-text');
+      const fingerKeysBadge = document.getElementById('finger-keys-badge');
+      fingerBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          fingerBtns.forEach(b => { b.classList.remove('active-opt'); b.classList.add('inactive-opt'); });
+          btn.classList.add('active-opt');
+          btn.classList.remove('inactive-opt');
+          config.fingerSet = btn.getAttribute('data-finger');
+          const info = FINGER_SETS[config.fingerSet];
+          if (info) {
+            if (fingerDescText) fingerDescText.textContent = info.desc;
+            if (fingerKeysBadge) fingerKeysBadge.textContent = info.keysBadge;
+          }
+          updateModeBadgeHUD();
+        });
+      });
+
+      // Toggle Virtual Keyboard button
+      const btnToggleKeyboard = document.getElementById('btn-toggle-keyboard');
+      if (btnToggleKeyboard) {
+        btnToggleKeyboard.addEventListener('click', () => {
+          config.showKeyboard = !config.showKeyboard;
+          updateVirtualKeyboard(null);
+        });
+      }
+
+      // Case Mode buttons
+      const caseBtns = document.querySelectorAll('.case-opt-btn');
+      caseBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          caseBtns.forEach(b => { b.classList.remove('active-opt'); b.classList.add('inactive-opt'); });
+          btn.classList.add('active-opt');
+          btn.classList.remove('inactive-opt');
+          config.caseMode = btn.getAttribute('data-case');
+        });
+      });
+
+      // Difficulty buttons
+      const diffBtns = document.querySelectorAll('.diff-opt-btn');
+      diffBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          diffBtns.forEach(b => { b.classList.remove('active-opt'); b.classList.add('inactive-opt'); });
+          btn.classList.add('active-opt');
+          btn.classList.remove('inactive-opt');
+          config.difficulty = btn.getAttribute('data-diff');
+          applyTheme(config.difficulty);
+        });
+      });
+
+      // Duration buttons
+      const durationBtns = document.querySelectorAll('.duration-opt-btn');
+      durationBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          durationBtns.forEach(b => { b.classList.remove('active-opt'); b.classList.add('inactive-opt'); });
+          btn.classList.add('active-opt');
+          btn.classList.remove('inactive-opt');
+          config.duration = parseInt(btn.getAttribute('data-duration'), 10);
+        });
+      });
+
+      /* -------------------------------------------------------------
+       * 13.5 TOUCH TYPING TUTORIAL & WARMUP CONTROLLER
+       * ------------------------------------------------------------- */
+      let tutorialFromMode = 'auto'; // 'auto' (before game) or 'manual' (from menu button)
+      let warmupStep = 0;
+      const WARMUP_SEQUENCE = [
+        { key: 'F', finger: '左手食指', color: '#10b981', isAnchor: true, desc: '摸摸鍵盤 F 上的微凸小浮條，用【左手食指】直接敲擊' },
+        { key: 'J', finger: '右手食指', color: '#06b6d4', isAnchor: true, desc: '摸摸鍵盤 J 上的微凸小浮條，用【右手食指】直接敲擊' },
+        { key: 'D', finger: '左手中指', color: '#facc15', isAnchor: false, desc: '左手食指維持在 F，用【左手中指】敲擊 D' },
+        { key: 'K', finger: '右手中指', color: '#3b82f6', isAnchor: false, desc: '右手食指維持在 J，用【右手中指】敲擊 K' },
+        { key: 'S', finger: '左手無名指', color: '#fb923c', isAnchor: false, desc: '手指保持基準行，用【左手無名指】敲擊 S' },
+        { key: 'L', finger: '右手無名指', color: '#818cf8', isAnchor: false, desc: '手指保持基準行，用【右手無名指】敲擊 L' },
+        { key: 'A', finger: '左手小指', color: '#f43f5e', isAnchor: false, desc: '手掌放鬆，用【左手小指】輕敲 A' }
+      ];
+
+      const tutTabBtnHome = document.getElementById('tut-tab-btn-home');
+      const tutTabBtnZones = document.getElementById('tut-tab-btn-zones');
+      const tutTabBtnWarmup = document.getElementById('tut-tab-btn-warmup');
+      const tutPaneHome = document.getElementById('tut-pane-home');
+      const tutPaneZones = document.getElementById('tut-pane-zones');
+      const tutPaneWarmup = document.getElementById('tut-pane-warmup');
+      const chkSkipTutorialFuture = document.getElementById('chk-skip-tutorial-future');
+
+      function switchTutorialTab(tab) {
+        [tutTabBtnHome, tutTabBtnZones, tutTabBtnWarmup].forEach(btn => {
+          if (btn) btn.className = 'tut-tab-btn flex-1 py-2 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 text-slate-400 hover:text-slate-200 cursor-pointer';
+        });
+        [tutPaneHome, tutPaneZones, tutPaneWarmup].forEach(pane => {
+          if (pane) pane.classList.add('hidden');
+        });
+
+        if (tab === 'home' && tutTabBtnHome && tutPaneHome) {
+          tutTabBtnHome.className = 'tut-tab-btn flex-1 py-2 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 bg-emerald-500 text-slate-950 shadow-md cursor-pointer';
+          tutPaneHome.classList.remove('hidden');
+        } else if (tab === 'zones' && tutTabBtnZones && tutPaneZones) {
+          tutTabBtnZones.className = 'tut-tab-btn flex-1 py-2 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 bg-emerald-500 text-slate-950 shadow-md cursor-pointer';
+          tutPaneZones.classList.remove('hidden');
+        } else if (tab === 'warmup' && tutTabBtnWarmup && tutPaneWarmup) {
+          tutTabBtnWarmup.className = 'tut-tab-btn flex-1 py-2 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 bg-emerald-500 text-slate-950 shadow-md cursor-pointer';
+          tutPaneWarmup.classList.remove('hidden');
+        }
+      }
+
+      if (tutTabBtnHome) tutTabBtnHome.addEventListener('click', () => switchTutorialTab('home'));
+      if (tutTabBtnZones) tutTabBtnZones.addEventListener('click', () => switchTutorialTab('zones'));
+      if (tutTabBtnWarmup) tutTabBtnWarmup.addEventListener('click', () => switchTutorialTab('warmup'));
+
+      function renderWarmupStep() {
+        const stepText = document.getElementById('tut-warmup-step-text');
+        const progressBar = document.getElementById('tut-warmup-progress-bar');
+        const targetChar = document.getElementById('tut-target-key-char');
+        const targetBump = document.getElementById('tut-target-key-bump');
+        const targetBox = document.getElementById('tut-target-key-box');
+        const fingerLabel = document.getElementById('tut-target-finger-label');
+        const hintEl = document.getElementById('tut-warmup-hint');
+        const bubble = document.getElementById('tut-feedback-bubble');
+        const startBtn = document.getElementById('btn-tutorial-start');
+
+        if (warmupStep >= WARMUP_SEQUENCE.length) {
+          if (stepText) stepText.textContent = `7 / 7 完成！`;
+          if (progressBar) progressBar.style.width = '100%';
+          if (targetChar) targetChar.textContent = '🎉';
+          if (targetBump) targetBump.style.display = 'none';
+          if (targetBox) {
+            targetBox.style.borderColor = '#10b981';
+            targetBox.classList.remove('animate-pulse');
+            targetBox.classList.add('glow-active');
+          }
+          if (fingerLabel) {
+            fingerLabel.textContent = '🌟 雙手基準鍵校準成功！手感極佳！';
+            fingerLabel.style.color = '#10b981';
+          }
+          if (hintEl) hintEl.textContent = '手指肌肉記憶已就位，隨時準備開打！';
+          if (bubble) bubble.innerHTML = '<span class="text-emerald-400 font-bold">✨ 校準完成！點擊下方開始挑戰！</span>';
+          if (startBtn) {
+            startBtn.innerHTML = '<span>立即開打打地鼠！ 🚀</span>';
+            startBtn.classList.add('glow-active');
+          }
+          return;
+        }
+
+        const item = WARMUP_SEQUENCE[warmupStep];
+        if (stepText) stepText.textContent = `第 ${warmupStep + 1} / ${WARMUP_SEQUENCE.length} 步`;
+        if (progressBar) progressBar.style.width = `${Math.round(((warmupStep) / WARMUP_SEQUENCE.length) * 100)}%`;
+        if (targetChar) targetChar.textContent = item.key;
+        if (targetBump) {
+          targetBump.style.display = item.isAnchor ? 'block' : 'none';
+          targetBump.style.backgroundColor = item.color;
+        }
+        if (targetBox) {
+          targetBox.style.borderColor = item.color;
+          targetBox.style.color = item.color;
+        }
+        if (fingerLabel) {
+          fingerLabel.textContent = `👈 請使用【${item.finger}】敲擊「${item.key}」`;
+          fingerLabel.style.color = item.color;
+        }
+        if (hintEl) hintEl.textContent = item.desc;
+      }
+
+      function openTutorialModal(mode = 'auto') {
+        tutorialFromMode = mode;
+        warmupStep = 0;
+        if (chkSkipTutorialFuture) {
+          chkSkipTutorialFuture.checked = safeStorage.get('typing_skip_tutorial') === 'true';
+        }
+        switchTutorialTab('home');
+        renderWarmupStep();
+        gameState = 'TUTORIAL';
+        hideModal(startModal);
+        hideModal(pauseModal);
+        hideModal(gameoverModal);
+        showModal(tutorialModal);
+      }
+
+      function handleTutorialSkip() {
+        if (chkSkipTutorialFuture && chkSkipTutorialFuture.checked) {
+          safeStorage.set('typing_skip_tutorial', 'true');
+        }
+        hideModal(tutorialModal);
+        if (tutorialFromMode === 'manual') {
+          gameState = 'MENU';
+          showModal(startModal);
+          applyTheme(config.difficulty);
+        } else {
+          startGame();
+        }
+      }
+
+      function handleTutorialStartGame() {
+        if (chkSkipTutorialFuture && chkSkipTutorialFuture.checked) {
+          safeStorage.set('typing_skip_tutorial', 'true');
+        }
+        hideModal(tutorialModal);
+        startGame();
+      }
+
+      const btnTutSkipTop = document.getElementById('btn-tutorial-skip-top');
+      if (btnTutSkipTop) btnTutSkipTop.addEventListener('click', handleTutorialSkip);
+
+      const btnTutSkipBottom = document.getElementById('btn-tutorial-skip-bottom');
+      if (btnTutSkipBottom) btnTutSkipBottom.addEventListener('click', handleTutorialSkip);
+
+      const btnTutStart = document.getElementById('btn-tutorial-start');
+      if (btnTutStart) btnTutStart.addEventListener('click', handleTutorialStartGame);
+
+      const btnManualOpenTut = document.getElementById('btn-manual-open-tutorial');
+      if (btnManualOpenTut) btnManualOpenTut.addEventListener('click', () => openTutorialModal('manual'));
+
+      // Listen for tutorial warm-up keys
+      window.addEventListener('keydown', (e) => {
+        if (gameState !== 'TUTORIAL') return;
+        if (tutPaneWarmup && tutPaneWarmup.classList.contains('hidden')) return;
+        if (warmupStep >= WARMUP_SEQUENCE.length) return;
+
+        const current = WARMUP_SEQUENCE[warmupStep];
+        const pressed = e.key.toUpperCase();
+
+        if (pressed === current.key) {
+          e.preventDefault();
+          sound.playKeyClick();
+          warmupStep++;
+          const bubble = document.getElementById('tut-feedback-bubble');
+          if (bubble) {
+            bubble.innerHTML = `<span class="text-emerald-400 font-bold animate-bounce">太棒了！【${current.finger}】精準按對「${current.key}」！</span>`;
+          }
+          renderWarmupStep();
+        } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+          e.preventDefault();
+          sound.playMistake();
+          const bubble = document.getElementById('tut-feedback-bubble');
+          if (bubble) {
+            bubble.innerHTML = `<span class="text-rose-400">按到了 ${pressed}，請使用【${current.finger}】按「${current.key}」</span>`;
+          }
+        }
+      });
+
+      function onStartGameClicked() {
+        hideModal(startModal);
+        hideModal(tutorialModal);
+        startGame();
+      }
+
+      // Buttons
+      document.getElementById('btn-start-game').addEventListener('click', onStartGameClicked);
+      document.getElementById('btn-resume-game').addEventListener('click', resumeGame);
+
+      document.getElementById('btn-restart-from-pause').addEventListener('click', () => {
+        hideModal(pauseModal);
+        startGame();
+      });
+
+      document.getElementById('btn-settings-from-pause').addEventListener('click', () => {
+        hideModal(pauseModal);
+        gameState = 'MENU';
+        showModal(startModal);
+        applyTheme(config.difficulty);
+      });
+
+      document.getElementById('btn-settle-restart').addEventListener('click', () => {
+        hideModal(gameoverModal);
+        startGame();
+      });
+
+      document.getElementById('btn-settle-settings').addEventListener('click', () => {
+        hideModal(gameoverModal);
+        gameState = 'MENU';
+        showModal(startModal);
+        applyTheme(config.difficulty);
+      });
+
+      // Sound Toggle
+      const btnSound = document.getElementById('btn-sound-toggle');
+      const iconSoundOn = document.getElementById('icon-sound-on');
+      const iconSoundOff = document.getElementById('icon-sound-off');
+      btnSound.addEventListener('click', () => {
+        sound.enabled = !sound.enabled;
+        if (sound.enabled) {
+          iconSoundOn.classList.remove('hidden');
+          iconSoundOff.classList.add('hidden');
+        } else {
+          iconSoundOn.classList.add('hidden');
+          iconSoundOff.classList.remove('hidden');
+        }
+      });
+
+      // Pause toggle
+      document.getElementById('btn-pause-toggle').addEventListener('click', () => {
+        if (gameState === 'PLAYING') pauseGame();
+        else if (gameState === 'PAUSED') resumeGame();
+      });
+
+      // Global hotkeys (Space / Enter on Start Modal)
+      window.addEventListener('keydown', (e) => {
+        if (gameState === 'MENU' && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          onStartGameClicked();
+        } else if (gameState === 'GAMEOVER' && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          hideModal(gameoverModal);
+          startGame();
+        } else if (e.key === 'Escape') {
+          if (gameState === 'PLAYING') pauseGame();
+          else if (gameState === 'PAUSED') resumeGame();
+          else if (gameState === 'TUTORIAL') handleTutorialSkip();
+        }
+      });
+
+      // Download single HTML file functionality
+      document.getElementById('btn-download-html').addEventListener('click', () => {
+        const htmlContent = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+        const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = '3D_Whack_A_Mole_Typing.html';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+
+      /* -------------------------------------------------------------
+       * 14. MAIN ANIMATION & RENDER LOOP
+       * ------------------------------------------------------------- */
+      const clock = new THREE.Clock();
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        const rawDt = clock.getDelta();
+        const dt = Math.min(rawDt, 0.05);
+
+        // Drift Floating Minecraft Voxel Clouds
+        if (clouds) {
+          for (let i = 0; i < clouds.length; i++) {
+            const c = clouds[i];
+            c.mesh.position.x += c.speed * dt;
+            if (c.mesh.position.x > 22) {
+              c.mesh.position.x = -22;
+              c.mesh.position.z = (Math.random() - 0.5) * 30 - 2;
+            }
+          }
+        }
+
+        // Update 3D Moles
+        for (const mole of moleHoles) {
+          const result = mole.update(dt);
+          if (result === 'ESCAPED' && gameState === 'PLAYING') {
+            // Mole got away without being hit!
+            hp--;
+            combo = 0;
+            missCount++;
+            sound.playMiss();
+            flashDamageVignette();
+            updateStatsHUD();
+
+            if (activeLockedMole === mole) {
+              activeLockedMole = null;
+              updateTypingHUD();
+            }
+
+            if (hp <= 0) {
+              triggerGameOver(false);
+            }
+          }
+        }
+
+        // Hammer Animation
+        if (hammerAnim.active) {
+          hammerAnim.timer += dt;
+          const t = hammerAnim.timer / 0.22;
+          if (t < 0.4) {
+            // Swing down fast
+            const p = t / 0.4;
+            hammerGroup.rotation.x = -0.8 + 1.6 * p;
+            hammerGroup.position.y = 1.0 - 0.4 * p;
+          } else if (t < 1.0) {
+            // Rebound up
+            const p = (t - 0.4) / 0.6;
+            hammerGroup.rotation.x = 0.8 - 0.8 * p;
+            hammerGroup.position.y = 0.6 + 0.4 * p;
+          } else {
+            hammerAnim.active = false;
+            hammerGroup.visible = false;
+          }
+        }
+
+        // Particle update
+        for (const p of particles) {
+          if (p.mesh.visible) {
+            p.life += dt;
+            p.mesh.position.x += p.vx * dt;
+            p.mesh.position.y += p.vy * dt;
+            p.mesh.position.z += p.vz * dt;
+            p.vy -= 9.8 * dt; // gravity
+            p.mesh.rotation.x += p.rotSpeed * dt;
+            p.mesh.rotation.y += p.rotSpeed * dt;
+
+            const scale = Math.max(0, 1 - (p.life / p.maxLife));
+            p.mesh.scale.setScalar(scale);
+
+            if (p.life >= p.maxLife) {
+              p.mesh.visible = false;
+            }
+          }
+        }
+
+        // In-Game Timers
+        if (gameState === 'PLAYING') {
+          elapsedTotalTime += dt;
+          if (config.duration > 0) {
+            gameTimer -= dt;
+            if (gameTimer <= 0) {
+              gameTimer = 0;
+              updateTimerHUD();
+              triggerGameOver(true);
+            } else {
+              updateTimerHUD();
+            }
+          } else {
+            updateTimerHUD();
+          }
+
+          checkAndSpawnMoles(dt);
+        }
+
+        // Gentle camera sway
+        const time = clock.getElapsedTime();
+        camera.position.x = Math.sin(time * 0.3) * 0.4;
+        camera.position.y = 9.5 + Math.cos(time * 0.2) * 0.2;
+        camera.lookAt(0, 0, 0.4);
+
+        // Ensure canvas has valid dimensions
+        if (renderer.domElement.width === 0 || renderer.domElement.height === 0) {
+          updateCanvasSize();
+        }
+
+        renderer.render(scene, camera);
+      }
+
+      // Responsive Resize
+      window.addEventListener('resize', updateCanvasSize);
+      window.addEventListener('orientationchange', updateCanvasSize);
+
+      // Initial Theme setup
+      applyTheme('easy');
+
+      // Initialize Touch Typing Virtual Keyboard & Settings
+      initVirtualKeyboard();
+      updateVirtualKeyboard(null);
+      syncSettingsVisibility();
+
+      // Start rendering
+      animate();
+
+    })();
+  </script>
+</body>
+</html>
